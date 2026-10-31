@@ -1,0 +1,25 @@
+{
+ "name": "Nhịp 21 – HLV cá nhân",
+ "short_name": "Nhịp 21",
+ "description": "Lịch tập chạy 21 km, tạ, đốt mỡ và giãn cơ cho người bận rộn",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "any",
+ "background_color": "#EEF1F6",
+ "theme_color": "#2448D8",
+ "lang": "vi",
+ "icons": [
+  {
+   "src": "icon-180.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  }
+ ]
+}
