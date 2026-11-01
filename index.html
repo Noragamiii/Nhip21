@@ -781,7 +781,7 @@ details.plan .bk .field:first-child{margin-top:4px}
 <script>
 'use strict';
 /* ================= Nhịp 21 v2 — core ================= */
-const APP_VER = '2.0';
+const APP_VER = '2.1';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -810,7 +810,7 @@ function fullDate(s){ const d = parse(s); return WD[d.getDay()] + ' ' + d.getDat
 function shortYear(s){ const d = parse(s); return d.getDate() + '/' + (d.getMonth()+1) + '/' + d.getFullYear(); }
 function dayOfYear(){ const d = new Date(); return Math.floor((d - new Date(d.getFullYear(),0,0)) / DAY); }
 function fmtPace(sec){ if(!isFinite(sec) || sec <= 0) return '–'; sec = Math.round(sec); return Math.floor(sec/60) + ':' + pad(sec%60); }
-function fmtHM(sec){ const m = Math.round(sec/60); return Math.floor(m/60) + ' giờ ' + pad(m%60) + ' phút'; }
+function fmtHM(sec){ const m = Math.round(sec/60); return m < 60 ? m + ' phút' : Math.floor(m/60) + ' giờ ' + pad(m%60) + ' phút'; }
 function fmtHm(min){ min = Math.round(min); const h = Math.floor(min/60), m = min % 60; return h ? h + 'g' + (m ? pad(m) : '') : m + ' ph'; }
 function fmtClock(s){ s = Math.max(0, s); return s >= 60 ? Math.floor(s/60) + ':' + pad(s%60) : String(s); }
 function fmtDur(sec){ sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60; return h ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s); }
@@ -866,13 +866,16 @@ const ICON = {
 /* ================= state + storage (offline: localStorage on this device) ================= */
 const LS_KEY = 'nhip21-v1';
 function blank(){ return {profile:null, logs:[], body:[], tests:[], swaps:{}, moves:{}, avail:{}, moods:[], journal:[], mindLog:[], focusLog:[], top3:null, parked:null,
-  todos:[], books:[], readLog:[], sleep:[], food:[], water:{}, health:{}, courses:{}, favFood:[], wake:null, updatedAt:0}; }
+  todos:[], books:[], readLog:[], sleep:[], food:[], water:{}, health:{}, courses:{}, favFood:[], wake:null, meta:{}, updatedAt:0}; }
 function newProfile(o){
   const p = Object.assign({created:todayStr(), level:'3-5', fiveK:null, raceDate:null, planStart:mondayOf(todayStr()), snackTarget:5, deskMin:45, voice:true, sound:true, strengthGoal:2, activeGoal:4,
     longDay:5, runDays:[1,3], focusMode:'pomo', calmSound:'pad', calmVol:0.6, voiceRate:0.95, breathVoice:true, voiceName:'', focusSound:'off',
     age:null, sex:'m', height:null, goalW:null, goal:'can-doi', eq:{db:1, bar:1, rope:1}, stepGoal:8000, sleepGoal:7.5, mindGoal:10, readGoal:20, moveGoal:30,
     focusCat:'work', customMin:40, sleepSound:'rain', sleepTimer:30, smartWin:30, clipRec:true, placement:'bed', hrMax:null, runTime:'toi', lastHealth:null,
-    sleepMix:[{k:'rain', v:0.8}, {k:'brown', v:0.35}], wakeMission:true, runMusic:'off', workMusic:'off', lastWorkMusic:'beat128', bottleMl:750, bedT:'23:00', wakeT:'06:30'}, o || {});
+    sleepMix:[{k:'rain', v:0.8}, {k:'brown', v:0.35}], wakeMission:true, runMusic:'off', workMusic:'off', lastWorkMusic:'beat128', bottleMl:750, bedT:'23:00', wakeT:'06:30', dist:'21k', season:0, history:[], fitLong:10}, o || {});
+  if(!['5k','10k','21k','42k','fit'].includes(p.dist)) p.dist = '21k';
+  if(!['lt3','3-5','5-8','8-12','12-21','21+'].includes(p.level)) p.level = '3-5';
+  if(!Array.isArray(p.history)) p.history = [];
   if(!p.eq || typeof p.eq !== 'object') p.eq = {db:1, bar:1, rope:1};
   if(p.calmSound === 'own') p.calmSound = 'pad'; if(p.focusSound === 'own') p.focusSound = 'off';
   if(p.focusMode && /^\d+$/.test(p.focusMode)) p.focusMode = p.focusMode === '25' ? 'pomo' : p.focusMode === '90' ? 'deep' : p.focusMode === '45' ? 'stand' : 'fifty';
@@ -891,13 +894,15 @@ function normalize(s){
   }
   const byT = (a,b) => (a.t||0) - (b.t||0), byD = (a,b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0;
   const arr = (k, cap, need) => (s && Array.isArray(s[k]) ? s[k] : []).filter(x => x && (need ? x[need] : x.d)).map(x => JSON.parse(JSON.stringify(x))).sort(byT).slice(-cap);
-  out.logs = arr('logs', 6000);
-  out.body = arr('body', 1000).sort(byD);
-  out.tests = arr('tests', 200).sort(byD);
+  /* giới hạn rộng cho nhiều năm; dữ liệu cũ hơn 1 năm được gộp theo ngày (compactOld) nên hiếm khi chạm tới */
+  out.logs = arr('logs', 40000);
+  out.body = arr('body', 5000).sort(byD);
+  out.tests = arr('tests', 1000).sort(byD);
   const obj = k => s && s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) ? JSON.parse(JSON.stringify(s[k])) : {};
-  out.swaps = obj('swaps'); out.moves = obj('moves'); out.avail = obj('avail'); out.water = obj('water'); out.health = obj('health'); out.courses = obj('courses');
-  out.moods = arr('moods', 600); out.journal = arr('journal', 120); out.mindLog = arr('mindLog', 3000); out.focusLog = arr('focusLog', 3000);
-  out.todos = arr('todos', 800, 'id'); out.books = arr('books', 200, 'id'); out.readLog = arr('readLog', 3000); out.sleep = arr('sleep', 400); out.food = arr('food', 6000);
+  out.meta = obj('meta'); out.swaps = obj('swaps'); out.moves = obj('moves'); out.avail = obj('avail'); out.water = obj('water'); out.health = obj('health'); out.courses = obj('courses');
+  out.moods = arr('moods', 8000); out.journal = arr('journal', 3000); out.mindLog = arr('mindLog', 20000); out.focusLog = arr('focusLog', 20000);
+  out.todos = arr('todos', 100000, 'id'); { const open = out.todos.filter(t => !t.done), done = out.todos.filter(t => t.done).slice(-3000); out.todos = open.concat(done); }
+  out.books = arr('books', 2000, 'id'); out.readLog = arr('readLog', 20000); out.sleep = arr('sleep', 8000); out.food = arr('food', 40000);
   out.favFood = s && Array.isArray(s.favFood) ? s.favFood.slice(0, 40) : [];
   out.top3 = s && s.top3 && s.top3.d ? JSON.parse(JSON.stringify(s.top3)) : null;
   out.parked = s && s.parked && s.parked.d ? JSON.parse(JSON.stringify(s.parked)) : null;
@@ -916,7 +921,7 @@ let S = blank();
 function saveLocal(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }
   catch(e){ // quota: drop oldest epoch data and retry once
-    try{ S.sleep.slice(0, -14).forEach(n => { delete n.ep; delete n.ev; }); localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e2){ toast('Bộ nhớ trình duyệt đầy. Hãy sao lưu và xóa bớt nhật ký cũ.'); }
+    try{ S.sleep.slice(0, -14).forEach(n => { delete n.ep; delete n.ev; }); if(typeof compactOld === 'function') compactOld(true); localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e2){ toast('Bộ nhớ trình duyệt đầy. Hãy tải file sao lưu, rồi vào Cài đặt › Bộ nhớ để gọn dữ liệu cũ.'); }
   }
 }
 function loadLocal(){ try{ const t = localStorage.getItem(LS_KEY); if(t) return JSON.parse(t); }catch(e){} return null; }
@@ -955,6 +960,7 @@ const Backup = {
     byId('todos', true); byId('books', true);
     if(o.parked && (!S.parked || o.parked.d > S.parked.d)) S.parked = o.parked;
     if(o.wake && (!S.wake || newer)) S.wake = o.wake;
+    S.meta = S.meta || {}; S.meta.bkAt = Math.max(S.meta.bkAt || 0, (o.meta && o.meta.bkAt) || 0);
     S = normalize(S); persistAll();
     return 'Đã nhập: ' + nL + ' buổi tập, ' + nB + ' số đo, ' + nT + ' lần kiểm tra, ' + nO + ' mục khác. Dữ liệu ở máy này vẫn được giữ.';
   }
@@ -986,7 +992,7 @@ const SEGS = {
 };
 const UI = {view:'hom-nay', seg:{'van-dong':'lich','tam-tri':'thien','giac-ngu':'dem-qua','tap-trung':'viec'}, pick:{min:20, energy:'ok', focus:'auto', place:'home', format:'auto'}, variant:0,
   planMode:'week', weekOff:0, monthOff:0, planOpen:false, ck:null, ckEdit:false, jw:null, deskPlace:'office', topic:null, todoF:'today', exG:'all', foodD:null, sleepId:null,
-  ob:{level:'3-5', five:'', race:'', w:'', waist:'', longDay:5, runDays:[1,3], age:'', h:'', sex:'m'}};
+  ob:{dist:'21k', fitLong:10, level:'3-5', five:'', race:'', w:'', waist:'', longDay:5, runDays:[1,3], age:'', h:'', sex:'m'}};
 const RENDER = {};
 const LEGACY = {'lich-tap':['van-dong','lich'], 'lam-viec':['tap-trung','phien'], 'tien-do':['van-dong','co-the'], 'van-phong':['tap-trung','giua-gio'], 'bai-tap':['van-dong','bai-tap']};
 function route(){
@@ -1224,7 +1230,7 @@ const FOCUS = {
     ['db_sumo','db_hip_thrust','curtsy','sl_bridge','donkey_kick','clamshell'],
     ['db_goblet','db_step_up','side_lunge','glute_bridge','fire_hydrant','squat_pulse'],
     ['db_split','db_rdl','skater','db_hip_thrust','wall_sit','sl_calf']]},
-  'chan-chay':{n:'Chân khỏe cho chạy bộ',cat:'str',fm:['circuit','superset'],d:'Đùi, mông, bắp chân và thăng bằng một chân để chạy 21 km ít chấn thương.',circuits:[
+  'chan-chay':{n:'Chân khỏe cho chạy bộ',cat:'str',fm:['circuit','superset'],d:'Đùi, mông, bắp chân và thăng bằng một chân để chạy đường dài ít chấn thương.',circuits:[
     ['db_goblet','db_sl_rdl','reverse_lunge','glute_bridge','db_calf','side_plank'],
     ['db_split','db_rdl','calf_raise','glute_bridge','wall_sit','dead_bug'],
     ['db_step_up','sl_bridge','tib_raise','side_lunge','sl_calf','bird_dog']]},
@@ -1724,15 +1730,40 @@ const Anim = (function(){
   return {svg, still, frame, scan, has: id => !!A[id], keys, A, nk};
 })();
 
-/* ================= lộ trình 21K + HLV chạy (cấu trúc buổi, pace, nhịp tim) + lịch tự điều chỉnh ================= */
+/* ================= lộ trình chạy 5K → marathon + HLV chạy (cấu trúc buổi, pace, nhịp tim) + lịch tự điều chỉnh ================= */
 const LEVELS = {
   'lt3':{n:'Chưa chạy liền được 3 km',start:2.5,weeks:20},
   '3-5':{n:'Chạy được 3–5 km',start:4,weeks:16},
   '5-8':{n:'Chạy được 5–8 km',start:6,weeks:14},
-  '8-12':{n:'Chạy được 8–12 km',start:9,weeks:12}
+  '8-12':{n:'Chạy được 8–12 km',start:9,weeks:12},
+  '12-21':{n:'Chạy được 12–20 km',start:13,weeks:10},
+  '21+':{n:'Đã chạy 21 km trở lên',start:16,weeks:10}
 };
-const PHASE = {prep:'Giai đoạn chuẩn bị',base:'Giai đoạn nền tảng',build:'Giai đoạn xây dựng',peak:'Giai đoạn cao điểm',taper:'Giảm tải trước ngày đua',race:'Tuần đua',cut:'Tuần giảm tải',maint:'Giữ phong độ sau ngày đua'};
-const PHASE_SHORT = {prep:'Chuẩn bị',base:'Nền tảng',build:'Xây dựng',peak:'Cao điểm',taper:'Giảm tải',race:'Đua',cut:'Giảm tải',maint:'Giữ sức'};
+/* mục tiêu chạy: đổi được bất cứ lúc nào, mỗi lần đổi là một lộ trình mới, nhật ký cũ giữ nguyên */
+const GOALS = {
+  '5k':{n:'5 km', s:'5K', full:'5 km', km:5, cap:8, easyCap:6, maxQ:5, taper:1, maint:6, weeks:{'lt3':10,'3-5':8,'5-8':6,'8-12':6,'12-21':6,'21+':6}},
+  '10k':{n:'10 km', s:'10K', full:'10 km', km:10, cap:13, easyCap:7, maxQ:6, taper:1, maint:8, weeks:{'lt3':14,'3-5':12,'5-8':10,'8-12':8,'12-21':8,'21+':8}},
+  '21k':{n:'21 km', s:'21K', full:'half marathon 21,1 km', km:21.0975, cap:18, easyCap:8, maxQ:8, taper:1, maint:12, weeks:{'lt3':20,'3-5':16,'5-8':14,'8-12':12,'12-21':10,'21+':10}},
+  '42k':{n:'42 km', s:'42K', full:'marathon 42,2 km', km:42.195, cap:32, easyCap:12, maxQ:16, taper:2, maint:16, weeks:{'lt3':36,'3-5':30,'5-8':26,'8-12':22,'12-21':18,'21+':16}},
+  'fit':{n:'Khỏe lâu dài', s:'Khỏe lâu dài', full:'chạy đều để khỏe, không đua', km:0, cap:18, easyCap:8, maxQ:6, taper:0, maint:10, weeks:{}}
+};
+const GOAL_ORDER = ['5k','10k','21k','42k','fit'];
+const FIT_LONG = [6, 8, 10, 12, 15, 18];
+function goalOf(p){ p = p || S.profile; return GOALS[p && p.dist] || GOALS['21k']; }
+function isRaceGoal(p){ return goalOf(p).km > 0; }
+function raceKmOf(G){ return G.km > 40 ? 42.2 : G.km > 20 ? 21.1 : G.km; }
+function goalPaceKm(){ const G = goalOf(); return G.km || 10; }
+function maxWeeks(p){ return goalOf(p).km > 40 ? 40 : 26; }
+function wpre(i, p){ p = p || S.profile; return 'w' + i + (p && p.season ? 's' + p.season : ''); }
+/* mức chạy gợi ý theo buổi dài nhất 4 tuần qua */
+function levelFromLogs(){
+  const since = addDays(todayStr(), -28), L = S.logs.filter(l => l.kind === 'run' && l.d >= since);
+  if(!L.length) return null;
+  const mx = Math.max(...L.map(l => +l.km || 0));
+  return mx < 3 ? 'lt3' : mx < 5 ? '3-5' : mx < 8 ? '5-8' : mx < 12 ? '8-12' : mx < 20 ? '12-21' : '21+';
+}
+const PHASE = {prep:'Giai đoạn chuẩn bị',base:'Giai đoạn nền tảng',build:'Giai đoạn xây dựng',peak:'Giai đoạn cao điểm',taper:'Giảm tải trước ngày đua',race:'Tuần đua',cut:'Tuần giảm tải',recov:'Tuần hồi phục sau đua',maint:'Duy trì phong độ'};
+const PHASE_SHORT = {prep:'Chuẩn bị',base:'Nền tảng',build:'Xây dựng',peak:'Cao điểm',taper:'Giảm tải',race:'Đua',cut:'Giảm tải',recov:'Hồi phục',maint:'Duy trì'};
 const PHASE_NOTE = {
   prep:'Tạo thói quen trước khi vào lộ trình: chạy nhẹ, tập tạ đều.',
   base:'Xây nền: chạy chậm cho quen chân, tập tạ đều tay. Đây là lúc vóc dáng thay đổi nhanh nhất.',
@@ -1741,7 +1772,8 @@ const PHASE_NOTE = {
   taper:'Giảm tải để cơ thể hồi phục hoàn toàn. Tập nhẹ, ngủ sớm.',
   race:'Tuần đua: chỉ chạy nhẹ, không thử gì mới. Chúc bạn về đích!',
   cut:'Tuần giảm tải: quãng chạy ngắn lại để cơ thể hấp thụ mấy tuần vừa qua.',
-  maint:'Xong 21 km rồi! Giữ 3 buổi chạy và 2 buổi tạ mỗi tuần để giữ vóc dáng cân đối.'
+  recov:'Vừa xong ngày đua: một tuần chạy thật nhẹ cho cơ thể hồi phục. Ngủ nhiều, ăn đủ đạm.',
+  maint:'Giai đoạn duy trì, kéo dài bao lâu cũng được: 3 buổi chạy và 2 buổi tạ mỗi tuần, cứ 4 tuần có 1 tuần nhẹ. Muốn thử sức tiếp thì chọn mục tiêu mới.'
 };
 const SHORT = {easy:'Chạy dễ',quality:'Chất lượng',long:'Chạy dài'};
 /* vùng nhịp tim theo % nhịp tim tối đa */
@@ -1757,9 +1789,12 @@ const EFF = {
 const EFFORT = {easy:'nhẹ nhàng, vẫn nói trọn câu được', tempo:'khá nặng, chỉ nói được vài từ', inter:'nhanh và mạnh, gần hết sức nhưng vẫn kiểm soát', hm:'hơi nặng nhưng đều, giữ được rất lâu'};
 function hrMax(){ const p = S.profile; if(!p) return null; if(p.hrMax) return p.hrMax; return p.age ? Math.round(208 - 0.7 * p.age) : null; }
 function zoneText(z){ const Z = ZONES[z], mx = hrMax(); return Z[0] + '–' + Z[1] + '% nhịp tim tối đa' + (mx ? ' (' + Math.round(mx * Z[0] / 100) + '–' + Math.round(mx * Z[1] / 100) + ' nhịp/phút)' : ''); }
-function paces(fiveK){
-  const p = fiveK / 5, hmT = fiveK * Math.pow(21.0975/5, 1.06);
-  return {easy:[p*1.22, p*1.32], long:[p*1.25, p*1.35], tempo:p*1.07, inter:p*0.98, hm:hmT/21.0975, hmTotal:hmT, walk:[600, 780]};
+/* dự đoán thời gian theo công thức Riegel; marathon dùng số mũ lớn hơn vì người mới thường chậm dần ở nửa sau */
+function predictT(fiveK, km){ return fiveK * Math.pow(km / 5, km > 30 ? 1.08 : 1.06); }
+function paces(fiveK, km){
+  km = km || (typeof S !== 'undefined' && S.profile ? goalPaceKm() : 21.0975);
+  const p = fiveK / 5, rT = predictT(fiveK, km);
+  return {easy:[p*1.22, p*1.32], long:[p*1.25, p*1.35], tempo:p*1.07, inter:p*0.98, hm:rT/km, hmTotal:rT, raceKm:km, walk:[600, 780]};
 }
 /* 5K tương đương: lấy từ hồ sơ, nếu chưa có thì ước từ buổi chạy tốt nhất 60 ngày gần đây */
 function estFive(){
@@ -1771,7 +1806,7 @@ function estFive(){
 }
 function curPaces(){ const f = estFive(); return f ? paces(f.sec) : null; }
 function paceText(pc, k){ if(!pc || !pc[k]) return ''; const v = pc[k]; return Array.isArray(v) ? fmtPace(v[0]) + '–' + fmtPace(v[1]) + ' /km' : fmtPace(v) + ' /km'; }
-function planLength(p){ if(p.raceDate) return clamp(Math.floor(diffDays(p.planStart, mondayOf(p.raceDate))/7) + 1, 6, 24); return LEVELS[p.level].weeks; }
+function planLength(p){ const G = goalOf(p); if(p.raceDate && G.km) return clamp(Math.floor(diffDays(p.planStart, mondayOf(p.raceDate))/7) + 1, 6, maxWeeks(p)); return G.weeks[p.level] || LEVELS[p.level].weeks; }
 
 /* ===== cấu trúc từng đoạn của buổi chạy (dùng để hiển thị và để HLV đọc khi chạy GPS) ===== */
 const PK = {warm:'walk', cool:'walk', walk:'walk', rec:'walk', run:'easy', long:'long', tempo:'tempo', int:'inter', hm:'hm', stride:'inter', drill:null};
@@ -1786,7 +1821,8 @@ function partsMin(parts){ const pc = curPaces() || paces(35*60); let s = 0; part
 function easyParts(km){ return [Pw(4), Pd(), Pr(Math.max(1, km)), Prep(4, {k:'stride', sec:20, cue:'Tăng tốc mượt tới khoảng 80% sức, thân thẳng, tay đánh nhanh.'}, {k:'rec', sec:40, cue:'Đi bộ hoặc chạy thật chậm để hồi.'}), Pc(4)].flat(); }
 
 function mkRun(prefix, type, title, km, detail, pk, parts, guided){
-  return {key:prefix + '-' + type, type, title, km:Math.round(km*10)/10 === 21.1 ? 21.1 : r05(km), detail, pk, z:(EFF[pk] || EFF.easy).z, effort:EFFORT[pk] || EFFORT.easy, parts:parts || null, guided:guided || null};
+  const k10 = Math.round(km*10)/10;
+  return {key:prefix + '-' + type, type, title, km:(k10 === 21.1 || k10 === 42.2) ? k10 : r05(km), detail, pk, z:(EFF[pk] || EFF.easy).z, effort:EFFORT[pk] || EFFORT.easy, parts:parts || null, guided:guided || null};
 }
 function guidedRunWalk(r, reps){
   const g = [Pw(3)];
@@ -1794,8 +1830,15 @@ function guidedRunWalk(r, reps){
   g.push(Pc(3));
   return g;
 }
-function weekRuns(i, phase, long, p, cut){
-  const R = (type, title, km, detail, pk, parts) => mkRun('w' + i, type, title, km, detail, pk, parts);
+function weekRuns(i, phase, long, p, cut, prefix){
+  const G = goalOf(p), gs = G.km ? G.s : '10K', pre = prefix || wpre(i, p);
+  const R = (type, title, km, detail, pk, parts) => mkRun(pre, type, title, km, detail, pk, parts);
+  if(phase === 'recov'){
+    const e = clamp(r05(long * 0.6), 3, 6);
+    return [R('easy', 'Chạy hồi phục', e, 'Chạy thật chậm, ngắn. Chân còn đau thì đi bộ nhanh thay thế.', 'easy', [Pw(5), Pr(e), Pc(5)]),
+      R('quality', 'Chạy dễ thả lỏng', e, 'Chưa chạy nhanh tuần này. Chạy dễ rồi giãn cơ kỹ.', 'easy', [Pw(5), Pr(e), Pc(6)]),
+      R('long', 'Chạy dễ cuối tuần', long, 'Chạy dễ ' + num(long) + ' km, không ép tốc độ. Đây là tuần cho cơ thể hồi lại sau ngày đua.', 'long', [Pw(5), Pr(long, 'long'), Pc(6)])];
+  }
   const runwalk = p.level === 'lt3' && long < 5 && phase !== 'race' && phase !== 'taper';
   if(runwalk){
     const r = Math.min(5, i + 1);
@@ -1806,13 +1849,13 @@ function weekRuns(i, phase, long, p, cut){
     };
     return [mk('easy', 22, 'Chạy – đi bộ'), mk('quality', 26, 'Chạy – đi bộ, giữ nhịp'), mk('long', 34, 'Chạy – đi bộ dài hơn')];
   }
-  const easyKm = phase === 'race' ? 4 : clamp(r05(long * 0.5), 3, 8);
+  const easyKm = phase === 'race' ? 4 : clamp(r05(long * 0.5), 3, G.easyCap);
   const easy = R('easy', phase === 'race' ? 'Chạy dễ đầu tuần' : 'Chạy dễ', easyKm,
     phase === 'race' ? 'Chạy thật nhẹ để chân linh hoạt. Ngủ sớm cả tuần.' : 'Nhịp thoải mái, chạy tối sau giờ làm hoàn toàn ổn. Mục tiêu là thời gian trên chân, không phải tốc độ.', 'easy', easyParts(easyKm - 0.6));
   let q;
   const WU = [Pw(4), Pd(), Pr(1.5)], CD = [Pr(1), Pc(4)];
   if(phase === 'race') q = R('quality', 'Chạy nhẹ + tăng tốc', 3, 'Hai, ba ngày trước ngày đua: chạy nhẹ 3 km, cuối buổi 3 lần tăng tốc 15 giây.', 'easy', [Pw(4), Pr(2.6), Prep(3, {k:'stride', sec:15, cue:'Tăng tốc nhẹ, thả lỏng.'}, {k:'rec', sec:45, cue:'Đi bộ.'}), Pc(4)].flat());
-  else if(phase === 'taper') q = R('quality', 'Chạy dễ + pace đua', 6, 'Chạy dễ 1,5 km, rồi 3 lần 1 km ở pace half marathon (đi bộ 2 phút giữa các lần), thả lỏng 1 km.', 'hm', WU.concat(Prep(3, {k:'hm', km:1, cue:'Giữ đúng pace đua, đều như máy.'}, {k:'rec', sec:120, cue:'Đi bộ 2 phút.'}), CD));
+  else if(phase === 'taper') q = R('quality', 'Chạy dễ + pace đua', 6, 'Chạy dễ 1,5 km, rồi 3 lần 1 km ở pace đua ' + gs + ' (đi bộ 2 phút giữa các lần), thả lỏng 1 km.', 'hm', WU.concat(Prep(3, {k:'hm', km:1, cue:'Giữ đúng pace đua, đều như máy.'}, {k:'rec', sec:120, cue:'Đi bộ 2 phút.'}), CD));
   else if(phase === 'base' || cut) q = R('quality', 'Chạy dễ + tăng tốc', easyKm, 'Chạy dễ ' + num(easyKm) + ' km. Cuối buổi 5 lần tăng tốc 20 giây, đi bộ 40 giây giữa các lần. Giúp chân quen nhịp nhanh mà không mệt.', 'easy', [Pw(4), Pd(), Pr(Math.max(1, easyKm - 0.7)), Prep(5, {k:'stride', sec:20, cue:'Tăng tốc mượt tới 80% sức, bước nhanh và nhẹ.'}, {k:'rec', sec:40, cue:'Đi bộ 40 giây.'}), Pc(4)].flat());
   else if(phase === 'build'){
     const k = i % 4;
@@ -1822,23 +1865,30 @@ function weekRuns(i, phase, long, p, cut){
     else { const n = clamp(4 + Math.floor(i/3), 5, 8); q = R('quality', 'Chạy dốc ' + n + ' lần', 3 + n*0.3, 'Khởi động 1,5 km. Tìm con dốc hoặc cầu dài 100–200 m: chạy lên mạnh ' + n + ' lần, đi bộ xuống hồi sức. Thả lỏng 1 km. Không có dốc thì leo cầu thang bộ.', 'inter', WU.concat(Prep(n, {k:'int', sec:45, cue:'Chạy lên dốc mạnh, bước ngắn, đánh tay, nhìn thẳng.'}, {k:'rec', sec:90, cue:'Đi bộ xuống dốc.'}), CD)); }
   } else {
     const k = i % 3;
-    if(k === 0){ const x = clamp(Math.round(long * 0.4), 4, 8); q = R('quality', x + ' km pace đua', x + 2.5, 'Khởi động 1,5 km, chạy ' + x + ' km ở pace half marathon, thả lỏng 1 km. Tập giữ nhịp đều như ngày đua.', 'hm', WU.concat([{k:'hm', km:x, cue:'Pace đua: hơi nặng nhưng đều, giữ được rất lâu.'}], CD)); }
+    if(k === 0 && G.km && G.km <= 10){ const n = clamp(Math.round(G.km * 0.6), 3, 6); q = R('quality', n + ' × 1 km pace đua', 2.5 + n*1.2, 'Khởi động 1,5 km, chạy ' + n + ' lần 1 km ở pace đua ' + gs + ', đi bộ 2 phút giữa các lần. Thả lỏng 1 km.', 'hm', WU.concat(Prep(n, {k:'hm', km:1, cue:'Pace đua: nặng nhưng kiểm soát được.'}, {k:'rec', sec:120, cue:'Đi bộ 2 phút.'}), CD)); }
+    else if(k === 0){ const x = clamp(Math.round(long * 0.4), 4, G.maxQ); q = R('quality', x + ' km pace đua', x + 2.5, 'Khởi động 1,5 km, chạy ' + x + ' km ở pace đua ' + gs + ', thả lỏng 1 km. Tập giữ nhịp đều như ngày đua.', 'hm', WU.concat([{k:'hm', km:x, cue:'Pace đua: hơi nặng nhưng đều, giữ được rất lâu.'}], CD)); }
     else if(k === 1){ const t = clamp(15 + Math.floor(i/2), 20, 30); q = R('quality', 'Tempo ' + t + ' phút', 2.5 + t/6, 'Khởi động 1,5 km, tempo ' + t + ' phút, thả lỏng 1 km.', 'tempo', WU.concat([{k:'tempo', sec:t*60, cue:'Tempo: chỉ nói được vài từ, giữ đều.'}], CD)); }
     else { const n = clamp(3 + Math.floor(i/4), 4, 6); q = R('quality', n + ' × 1 km', 2.5 + n*1.2, 'Khởi động 1,5 km, chạy ' + n + ' lần 1 km ở pace tempo, đi bộ 2 phút giữa các lần. Thả lỏng 1 km.', 'tempo', WU.concat(Prep(n, {k:'tempo', km:1, cue:'Pace tempo, đều từ đầu tới cuối.'}, {k:'rec', sec:120, cue:'Đi bộ 2 phút.'}), CD)); }
   }
+  const rk = raceKmOf(G), fuel = long >= 25 ? ' Ăn gel hoặc chuối mỗi 40–45 phút, uống nước mỗi 20 phút, tập đúng như ngày đua.' : long >= 12 ? ' Từ mốc này, mang nước và tập ăn chuối hoặc gel giữa đường.' : '';
+  const fastFin = G.km > 40 && phase === 'peak' && long >= 18 && i % 2 === 0;
   const lg = phase === 'race'
-    ? R('long', 'Ngày đua 21,1 km', 21.1, 'Xuất phát chậm hơn pace mục tiêu ở 3 km đầu, uống nước ở các trạm, chỉ dùng đồ ăn và trang phục đã thử trong các buổi chạy dài.', 'hm', [Pw(5), {k:'hm', km:21.1, cue:'3 km đầu chậm hơn pace đua, sau đó giữ đều. Uống nước mỗi trạm.'}, Pc(10)])
-    : R('long', 'Chạy dài', long, 'Chạy dài ' + num(long) + ' km thật chậm, sáng hoặc chiều mát cuối tuần như bạn quen. Được phép đi bộ 1 phút mỗi 2–3 km.' + (long >= 12 ? ' Từ mốc này, mang nước và tập ăn chuối hoặc gel giữa đường.' : ''), 'long', [Pw(5), Pr(long, 'long'), Pc(6)]);
+    ? R('long', 'Ngày đua ' + num(rk) + ' km', rk, 'Xuất phát chậm hơn pace mục tiêu ở ' + (rk > 10 ? '3 km' : '1 km') + ' đầu, uống nước ở các trạm, chỉ dùng đồ ăn và trang phục đã thử trong các buổi chạy dài.' + (rk > 40 ? ' Ăn gel mỗi 40–45 phút từ km 8–10, đừng đợi đói mới ăn. Nửa sau mới là cuộc đua thật.' : ''), 'hm', [Pw(rk <= 10 ? 10 : 5), {k:'hm', km:rk, cue:(rk > 10 ? '3 km' : '1 km') + ' đầu chậm hơn pace đua, sau đó giữ đều. Uống nước mỗi trạm.'}, Pc(10)])
+    : fastFin
+    ? R('long', 'Chạy dài, 5 km cuối pace đua', long, 'Chạy dài ' + num(long) + ' km: ' + num(long - 5) + ' km đầu thật chậm, 5 km cuối lên pace đua marathon. Tập chạy nhanh khi chân đã mỏi, đúng như nửa sau ngày đua.' + fuel, 'long', [Pw(5), Pr(long - 5, 'long'), {k:'hm', km:5, cue:'5 km cuối: lên pace đua marathon, giữ đều, đừng vượt nhanh hơn.'}, Pc(6)])
+    : R('long', 'Chạy dài', long, 'Chạy dài ' + num(long) + ' km thật chậm, sáng hoặc chiều mát cuối tuần như bạn quen. Được phép đi bộ 1 phút mỗi 2–3 km.' + fuel, 'long', [Pw(5), Pr(long, 'long'), Pc(6)]);
   return [easy, q, lg];
 }
 function buildPlan(p){
-  const L = LEVELS[p.level], N = planLength(p), B = N - 2, start = L.start;
-  const peak = B > 1 ? Math.max(start, Math.min(18, start + 1.5*(B-1))) : start;
+  const G = goalOf(p), L = LEVELS[p.level] || LEVELS['3-5'], start = L.start;
+  if(!G.km) return buildFit(p, G, start);
+  const N = planLength(p), T = G.taper, B = N - 1 - T;
+  const peak = B > 1 ? Math.max(start, Math.min(G.cap, start + 1.5*(B-1))) : start;
   const weeks = [];
   for(let i = 1; i <= N; i++){
     let long, phase, cut = false;
-    if(i === N){ long = 21.1; phase = 'race'; }
-    else if(i === N - 1){ long = Math.max(6, r05(peak * 0.6)); phase = 'taper'; }
+    if(i === N){ long = raceKmOf(G); phase = 'race'; }
+    else if(i > B){ const j = i - B; long = Math.max(G.km > 10 ? 6 : 4, r05(peak * (T === 1 ? 0.6 : j === 1 ? 0.7 : 0.45))); phase = 'taper'; }
     else {
       let x = B > 1 ? start + (peak - start) * (i-1) / (B-1) : start;
       if(i % 4 === 0 && i < B - 1){ x *= 0.75; cut = true; }
@@ -1846,31 +1896,48 @@ function buildPlan(p){
       const f = i / B;
       phase = f <= 0.35 ? 'base' : f <= 0.7 ? 'build' : 'peak';
     }
-    weeks.push({n:i, phase, cut, long, runs:weekRuns(i, phase, long, p, cut)});
+    weeks.push({n:i, phase, cut, long, gen:{i, phase, cut, prefix:wpre(i, p)}, runs:weekRuns(i, phase, long, p, cut)});
   }
-  return {N, weeks, peak:r05(peak), short: N < L.weeks - 2};
+  const need = G.weeks[p.level] || L.weeks;
+  return {N, weeks, peak:r05(peak), short: N < need - 2, warn: G.km > 40 && ['lt3','3-5','5-8'].includes(p.level)};
+}
+/* không đua: tăng chạy dài 1 km mỗi tuần tới mức bạn chọn, rồi giữ mãi (cứ 4 tuần có 1 tuần nhẹ) */
+function buildFit(p, G, start){
+  const target = Math.max(4, p.fitLong || G.maint), weeks = [];
+  let long = Math.min(start, target), i = 0;
+  while(i < 4 || long < target){
+    i++; let cut = false, x = long;
+    if(i % 4 === 0){ x = Math.max(3, long * 0.75); cut = true; }
+    const phase = i <= 4 ? 'base' : 'build';
+    weeks.push({n:i, phase, cut, long:r05(x), gen:{i, phase, cut, prefix:wpre(i, p)}, runs:weekRuns(i, phase, r05(x), p, cut)});
+    if(!cut) long = Math.min(target, long + 1);
+    if(i > 40) break;
+  }
+  return {N:i, weeks, peak:r05(target), short:false, fit:true};
 }
 let _pk = '', _plan = null;
 function getPlan(){
   const p = S.profile; if(!p) return null;
-  const k = [p.level, p.raceDate, p.planStart, p.fiveK, JSON.stringify(estFive())].join('|');
+  const k = [p.level, p.raceDate, p.planStart, p.fiveK, p.dist, p.season, p.fitLong, JSON.stringify(estFive())].join('|');
   if(k !== _pk){ _pk = k; _plan = buildPlan(p); _sch = {}; _adapt = {}; }
   return _plan;
 }
 function weekIdxOf(monday){ return Math.floor(diffDays(S.profile.planStart, monday) / 7) + 1; }
 function curWeekIdx(){ return weekIdxOf(mondayOf(todayStr())); }
-function raceDay(){ const p = S.profile, P = getPlan(); return p.raceDate || addDays(p.planStart, (P.N-1)*7 + 6); }
+function raceDay(){ const p = S.profile, P = getPlan(); if(!isRaceGoal(p)) return null; return p.raceDate || addDays(p.planStart, (P.N-1)*7 + 6); }
 function prepWeek(m){
   const km = LEVELS[S.profile.level].start, pre = 'p' + m;
+  if(S.profile.season && m < mondayOf(todayStr())) return {n:0, phase:'prep', cut:false, long:0, runs:[], old:true};
   const d = 'Lộ trình chính bắt đầu ngày ' + viDate(S.profile.planStart) + '. Trước đó giữ thói quen: hai buổi chạy nhẹ mỗi tuần.';
   return {n:0, phase:'prep', cut:false, long:km, runs:[mkRun(pre, 'easy', 'Chạy dễ', km, d, 'easy', easyParts(km - 0.5)), mkRun(pre, 'long', 'Chạy dễ cuối tuần', km + 1, d, 'long', [Pw(5), Pr(km + 1, 'long'), Pc(5)])]};
 }
+/* sau ngày đua (hoặc sau giai đoạn lên nền của mục tiêu Khỏe lâu dài): chạy mãi không hết lịch */
 function maintWeek(m){
-  const pre = 'm' + m;
-  return {n:-1, phase:'maint', cut:false, long:10, runs:[
-    mkRun(pre, 'easy', 'Chạy dễ', 5, 'Nhịp thoải mái, giữ chân quen đường chạy.', 'easy', easyParts(4.4)),
-    mkRun(pre, 'quality', 'Fartlek 8 lần', 6, 'Chạy dễ 10 phút, rồi 8 lần: 1 phút nhanh, 2 phút chậm. Thả lỏng 5 phút.', 'tempo', [Pw(4), {k:'run', sec:600, cue:'Chạy dễ.'}].concat(Prep(8, {k:'tempo', sec:60, cue:'Nhanh theo cảm giác.'}, {k:'rec', sec:120, cue:'Chạy chậm.'}), [Pc(5)])),
-    mkRun(pre, 'long', 'Chạy dài vừa', 10, 'Chạy 10 km thật thoải mái cuối tuần.', 'long', [Pw(5), Pr(10, 'long'), Pc(5)])]};
+  const p = S.profile, G = goalOf(p), P = getPlan(), k = weekIdxOf(m) - P.N, pre = 'm' + m;
+  const hold = G.km ? G.maint : Math.max(4, p.fitLong || G.maint);
+  if(G.km && k === 1){ const l = r05(Math.max(4, hold * 0.6)); return {n:-1, phase:'recov', cut:false, long:l, gen:{i:k, phase:'recov', cut:false, prefix:pre}, runs:weekRuns(k, 'recov', l, p, false, pre)}; }
+  const cut = k % 4 === 0, long = r05(cut ? Math.max(3, hold * 0.75) : hold);
+  return {n:-1, phase:'maint', cut, long, gen:{i:k + 2, phase:'build', cut, prefix:pre}, runs:weekRuns(k + 2, 'build', long, p, cut, pre)};
 }
 function planWeekFor(m){ const P = getPlan(), i = weekIdxOf(m); if(i < 1) return prepWeek(m); if(i > P.N) return maintWeek(m); return P.weeks[i-1]; }
 
@@ -1878,7 +1945,7 @@ function planWeekFor(m){ const P = getPlan(), i = weekIdxOf(m); if(i < 1) return
 function runLogs(from, to){ return S.logs.filter(l => l.kind === 'run' && l.d >= from && l.d <= to); }
 function adaptLong(m, base){
   const ph = base.cut ? 'cut' : base.phase;
-  if(['race','taper','prep','maint'].includes(ph)) return {km:base.long};
+  if(['race','taper','prep','recov'].includes(ph)) return {km:base.long};
   if(!S.logs.some(l => l.kind === 'run' && l.d < m)) return {km:base.long};
   const r14 = runLogs(addDays(m, -14), addDays(m, -1)), r28 = runLogs(addDays(m, -28), addDays(m, -1));
   let ref, gap = false;
@@ -1897,11 +1964,11 @@ function weekPlan(m){
   if(_adapt[m]) return _adapt[m];
   const base = planWeekFor(m), cur = mondayOf(todayStr());
   let wk = Object.assign({}, base, {runs:base.runs.map(r => Object.assign({}, r)), notes:[]});
-  if(base.n >= 1 && m <= addDays(cur, 7)){
-    const a = adaptLong(m, base);
-    if(a.km !== base.long){ wk.long = a.km; wk.macroLong = base.long; wk.runs = weekRuns(base.n, base.phase, a.km, S.profile, base.cut).map(r => Object.assign({}, r, {adapted:true})); }
+  if(base.phase !== 'prep' && m <= addDays(cur, 7)){
+    const a = adaptLong(m, base), g = base.gen || {i:base.n, phase:base.phase, cut:base.cut};
+    if(a.km !== base.long){ wk.long = a.km; wk.macroLong = base.long; wk.runs = weekRuns(g.i, g.phase, a.km, S.profile, g.cut, g.prefix).map(r => Object.assign({}, r, {adapted:true})); }
     if(a.note) wk.notes.push(a.note);
-    if(base.phase !== 'race' && m <= cur){
+    if(base.n >= 1 && base.phase !== 'race' && m <= cur && isRaceGoal()){
       const behind = base.long - a.km, P = getPlan(), left = P.N - base.n;
       if(behind >= 3 && left <= 6 && S.profile.raceDate) wk.notes.push('Đang chậm hơn lộ trình khoảng ' + num(behind) + ' km chạy dài khi chỉ còn ' + left + ' tuần. Cân nhắc lùi ngày đua, hoặc ngày đua chạy xen đi bộ cho an toàn.');
     }
@@ -1928,19 +1995,33 @@ function currentWeek(){ return weekPlan(mondayOf(todayStr())); }
 function findRun(key){
   if(!key) return null;
   const m = /^([wpm])(.+)-(easy|quality|long)$/.exec(key); if(!m) return null;
-  if(m[1] === 'w'){ const P = getPlan(), i = +m[2]; if(!P.weeks[i - 1]) return null; const mon = addDays(S.profile.planStart, (i - 1) * 7); return weekPlan(mon).runs.find(r => r.key === key) || null; }
+  if(m[1] === 'w'){ const P = getPlan(), x = /^(\d+)(?:s(\d+))?$/.exec(m[2]); if(!x || +(x[2] || 0) !== (S.profile.season || 0)) return null; const i = +x[1]; if(!P.weeks[i - 1]) return null; const mon = addDays(S.profile.planStart, (i - 1) * 7); return weekPlan(mon).runs.find(r => r.key === key) || null; }
   return weekPlan(m[2]).runs.find(r => r.key === key) || null;
 }
 function placeStart(p){
   const m = mondayOf(todayStr()); p.planStart = m;
-  if(p.raceDate){ const n0 = Math.floor(diffDays(m, mondayOf(p.raceDate))/7) + 1; if(n0 > 24) p.planStart = addDays(mondayOf(p.raceDate), -23*7); }
+  if(p.raceDate && isRaceGoal(p)){ const mx = maxWeeks(p), n0 = Math.floor(diffDays(m, mondayOf(p.raceDate))/7) + 1; if(n0 > mx) p.planStart = addDays(mondayOf(p.raceDate), -(mx - 1)*7); }
+}
+/* bắt đầu mục tiêu mới: lưu mục tiêu cũ vào lịch sử, giữ toàn bộ nhật ký */
+function startSeason(p, o){
+  const old = {dist:p.dist || '21k', start:p.planStart, end:todayStr(), race:p.raceDate || null, level:p.level, season:p.season || 0, fitLong:p.fitLong || null};
+  const P = getPlan(), lastRace = P && !P.fit ? wpre(P.N, p) + '-long' : null, rl = lastRace && S.logs.find(l => l.planKey === lastRace);
+  if(rl){ old.result = {km:rl.km, sec:rl.sec || 0, d:rl.d}; }
+  p.history = (p.history || []).concat([old]).slice(-50);
+  p.season = (p.season || 0) + 1;
+  Object.assign(p, {dist:o.dist, level:o.level, raceDate:o.dist === 'fit' ? null : (o.raceDate || null), fitLong:o.fitLong || p.fitLong || 10});
+  placeStart(p);
+  /* buổi đã chạy trong tuần này tính luôn cho tuần 1 của lộ trình mới */
+  const end = addDays(p.planStart, 6);
+  S.logs.forEach(l => { if(l.planKey && l.d >= p.planStart && l.d <= end){ const t = /-(easy|quality|long)$/.exec(l.planKey); if(t) l.planKey = wpre(1, p) + '-' + t[1]; } });
+  S.swaps = {}; S.moves = {}; S.avail = {};
 }
 function doneKeys(){ return new Set(S.logs.filter(l => l.planKey).map(l => l.planKey)); }
 
 /* ================= lịch tuần: chạy + sức mạnh + đốt mỡ + phục hồi, theo ngày bạn rảnh ================= */
 const CATN = {str:'Sức mạnh', burn:'Đốt mỡ và core', rec:'Phục hồi', test:'Kiểm tra', run:'Chạy', rest:'Nghỉ', extra:'Ngoài lịch', walk:'Đi bộ'};
 function strengthSlots(m, wk){
-  const odd = Math.abs(weekIdxOf(m)) % 2 === 1, ph = wk.phase, light = ph === 'taper' || ph === 'race';
+  const odd = Math.abs(weekIdxOf(m)) % 2 === 1, ph = wk.phase, light = ph === 'taper' || ph === 'race' || ph === 'recov';
   const strMin = light ? 15 : (ph === 'peak' ? 20 : 25), firstWeek = parse(m).getDate() <= 7;
   return [
     {slot:'strA', focus: odd ? 'san-chac' : 'than-tren', min: strMin},
@@ -1954,7 +2035,7 @@ function weekSchedule(m){
   if(_sch[ck]) return _sch[ck];
   const wk = weekPlan(m), items = Array.from({length:7}, () => []), byType = {};
   wk.runs.forEach(r => { byType[r.type] = r; });
-  const ph = wk.phase, light = ph === 'taper' || ph === 'race', slots = strengthSlots(m, wk), optional = [];
+  const ph = wk.phase, light = ph === 'taper' || ph === 'race' || ph === 'recov', slots = strengthSlots(m, wk), optional = [];
   const av = S.avail[m] && S.avail[m].length ? S.avail[m].slice().sort((a, b) => a - b) : null;
   if(!av){
     const L = p.longDay, R = p.runDays.slice().sort((a,b) => a - b), runDay = {};
@@ -1997,7 +2078,8 @@ function weekSchedule(m){
     if(it){ const dd = days[mv[key]]; dd.items = dd.items.filter(x => x.kind !== 'rest'); dd.items.push(it); }
   });
   /* buổi ghi thêm ngoài lịch hiện ở đúng ngày */
-  days.forEach(dd => { S.logs.filter(l => l.d === dd.d && !l.planKey && !l.slot && ['run','walk','workout','other'].includes(l.kind)).forEach(l => { dd.items = dd.items.filter(x => !(x.kind === 'rest' && !x.busy)); dd.items.push({kind:'log', key:'log:' + l.id, log:l, title:l.title}); }); });
+  const wkKeys = new Set(wk.runs.map(r => r.key));
+  days.forEach(dd => { S.logs.filter(l => l.d === dd.d && (!l.planKey || !wkKeys.has(l.planKey)) && !l.slot && ['run','walk','workout','other'].includes(l.kind)).forEach(l => { dd.items = dd.items.filter(x => !(x.kind === 'rest' && !x.busy)); dd.items.push({kind:'log', key:'log:' + l.id, log:l, title:l.title}); }); });
   const res = {m, wk, days, optional, swapped: !!perm, moved: Object.keys(mv).length > 0, avail: av};
   _sch[ck] = res;
   return res;
@@ -3630,7 +3712,7 @@ function mindStats(){
   while(days.has(d) && streak < 3000){ streak++; d = addDays(d, -1); }
   let best = 0, run = 0; [...days].sort().forEach((x, i, a) => { run = i && diffDays(a[i - 1], x) === 1 ? run + 1 : 1; best = Math.max(best, run); });
   const wk = weekRange(t);
-  return {total:sum(L, x => x.min), streak, best, days:days.size, sessions:L.length, week:sum(L.filter(x => x.d >= wk[0] && x.d <= wk[1]), x => x.min), today:sum(L.filter(x => x.d === t), x => x.min), todayDone:days.has(t)};
+  return {total:sum(L, x => x.min), streak, best, days:days.size, sessions:sum(L, x => x.n || 1), week:sum(L.filter(x => x.d >= wk[0] && x.d <= wk[1]), x => x.min), today:sum(L.filter(x => x.d === t), x => x.min), todayDone:days.has(t)};
 }
 Object.assign(ACT, {
   'ck': b => { const k = b.dataset.k, v = +b.dataset.v; UI.ck[k] = UI.ck[k] === v ? 0 : v; b.parentNode.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(+x.dataset.v === UI.ck[k]))); },
@@ -4598,7 +4680,7 @@ RENDER['hom-nay'] = function(){
   if(!S.logs.some(l => l.d === y) && !S.logs.some(l => l.d === t) && p.created < y)
     a += '<div class="sec note gold"><b>Hôm qua nghỉ rồi, hôm nay đừng nghỉ tiếp.</b> Không bỏ lỡ hai ngày liền là đủ để giữ thói quen. Chỉ cần 2 phút. <div class="btn-row"><button class="btn small gold" data-act="quick2">Tập 2 phút ngay</button></div></div>';
   a += todayPlanHtml() + todayTodoHtml();
-  let b = eveningHtml() + '<section class="sec first">' + waterCardHtml(t, true) + '</section>' + todayFoodMini() + todayMindHtml() + healthCardHtml() + weekMetersHtml();
+  let b = eveningHtml() + '<section class="sec first">' + waterCardHtml(t, true) + '</section>' + todayFoodMini() + todayMindHtml() + healthCardHtml() + weekMetersHtml() + backupNudgeHtml();
   el.innerHTML = cols(a, b);
 };
 function todayFoodMini(){
@@ -4610,7 +4692,7 @@ function todayFoodMini(){
 /* ===== Vận động ===== */
 function weekHtml(){
   const m = addDays(mondayOf(todayStr()), UI.weekOff * 7), sc = weekSchedule(m), t = todayStr(), wk = sc.wk, P = getPlan(), w = weekIdxOf(m);
-  const label = w < 1 ? 'Chuẩn bị' : w > P.N ? 'Sau ngày đua' : 'Tuần ' + w + ' trên ' + P.N;
+  const label = w < 1 ? (S.profile.season ? 'Trước lộ trình này' : 'Chuẩn bị') : w > P.N ? (P.fit ? 'Duy trì' : 'Sau ngày đua') : 'Tuần ' + w + ' trên ' + P.N;
   const av = S.avail[m];
   const days = sc.days.map(d => {
     const cls = (d.d === t ? ' today' : '') + (d.d < t ? ' past' : '');
@@ -4630,7 +4712,7 @@ function weekHtml(){
     legendHtml() +
     '<section class="sec"><ul class="tips"><li><b>Lịch tự điều chỉnh</b>Chạy ít hơn kế hoạch (ví dụ 7 trên 9 km) thì tuần sau quãng chạy dài tăng từ từ từ mức bạn chạy được. Chạy thêm ngoài lịch thì buổi dễ còn lại trong tuần tự rút bớt.</li>' +
     '<li><b>Rảnh hôm nào chạy hôm đó</b>Chạm “Dời, đổi, ghi thêm” để chuyển một buổi sang ngày khác, hoặc ghi buổi chạy thêm.</li>' +
-    '<li><b>Vì sao xếp như vậy</b>Ba buổi chạy để tới 21 km, hai buổi tạ cho cơ thể cân đối, một buổi đốt mỡ và core, một ngày phục hồi sau chạy dài.</li></ul>' +
+    '<li><b>Vì sao xếp như vậy</b>Ba buổi chạy cho mục tiêu ' + esc(goalOf().s) + ', hai buổi tạ cho cơ thể cân đối, một buổi đốt mỡ và core, một ngày phục hồi sau chạy dài.</li></ul>' +
     '<div class="btn-row"><button class="btn small ghost" data-act="settings">Đổi ngày chạy cố định</button></div></section>';
   return cols(left, right);
 }
@@ -4672,20 +4754,26 @@ function monthHtml(){
 function runSegHtml(){
   const p = S.profile, P = getPlan(), w = curWeekIdx(), wk = currentWeek(), dk = doneKeys(), pc = curPaces(), rd = raceDay(), ef = estFive();
   const next = wk.runs.find(r => !dk.has(r.key));
-  let a = '<header><p class="muted small">Lộ trình 21K · mục tiêu chính là cơ thể cân đối</p><h1 class="big run-h1">' + (w < 1 ? 'Chuẩn bị' : w > P.N ? 'Hoàn thành' : 'Tuần ' + w + '<span> / ' + P.N + '</span>') + '</h1><p>' + PHASE[wk.cut ? 'cut' : wk.phase] + '. Ngày đua ' + fullDate(rd) + ' (còn ' + Math.max(0, diffDays(todayStr(), rd)) + ' ngày).</p>' + (pc ? '<p class="small muted">Dự đoán 21 km: khoảng ' + fmtHM(pc.hmTotal) + '.</p>' : '') + '</header>';
+  const G = goalOf(), after = w > P.N, dLeft = rd ? diffDays(todayStr(), rd) : 0;
+  let a = '<header><p class="muted small">' + (G.km ? 'Lộ trình ' + G.s : 'Chạy để khỏe lâu dài') + ' · mục tiêu chính là cơ thể cân đối</p><h1 class="big run-h1">' + (w < 1 ? 'Chuẩn bị' : after ? 'Duy trì' : 'Tuần ' + w + '<span> / ' + P.N + '</span>') + '</h1><p>' + PHASE[wk.cut ? 'cut' : wk.phase] + '. ' +
+    (G.km ? (dLeft >= 0 ? 'Ngày đua ' + G.n + ': ' + fullDate(rd) + ' (còn ' + dLeft + ' ngày).' : 'Đã qua ngày đua ' + G.n + ' (' + fullDate(rd) + ').') : (after ? 'Chạy dài giữ ở ' + num(P.peak) + ' km, không có ngày kết thúc.' : 'Chạy dài tăng dần tới ' + num(P.peak) + ' km rồi giữ ở đó.')) + '</p>' +
+    (pc ? '<p class="small muted">Dự đoán với sức hiện tại: ' + ['5k','10k','21k','42k'].map(k => GOALS[k].n + ' ' + fmtHM(predictT(ef.sec, GOALS[k].km))).join(' · ') + '.</p>' : '') +
+    '<div class="btn-row" style="margin-top:8px"><button class="btn small ghost" data-act="goal-open">Đổi mục tiêu: 5K, 10K, 21K, 42K…</button></div></header>';
+  if(after && G.km) a += '<section class="sec"><div class="card"><h3>Xong ' + G.s + '! Tiếp theo là gì?</h3><p class="small" style="margin-top:4px">Lịch đang ở chế độ duy trì: 3 buổi chạy, chạy dài ' + num(G.maint) + ' km, kéo dài bao lâu cũng được. Khi muốn thử sức tiếp, chọn mục tiêu mới. Nhật ký cũ vẫn giữ nguyên.</p><div class="btn-row">' + nextGoals(G).map(k => '<button class="btn small ' + (k === nextGoals(G)[0] ? 'primary' : 'ghost') + '" data-act="goal-open" data-v="' + k + '">' + esc(GOALS[k].n) + '</button>').join('') + '</div></div></section>';
+  if(P.warn) a += '<p class="sec note warn">Marathon từ mức hiện tại cần lộ trình dài (' + P.N + ' tuần). Nhiều HLV khuyên chạy xong 21K trước rồi mới lên 42K: ít chấn thương hơn và vui hơn.</p>';
   if(P.short) a += '<p class="sec note warn">Thời gian tới ngày đua hơi gấp so với mức hiện tại. Ưu tiên về đích an toàn: chạy dài thật chậm, đừng ép tốc độ.</p>';
   a += '<section class="sec"><div class="sec-h"><h2>Buổi chạy tuần này</h2><span class="aside">' + wk.runs.filter(r => dk.has(r.key)).length + ' trên ' + wk.runs.length + ', ngày nào cũng được</span></div>' + wk.notes.map(n => '<p class="adapt" style="margin-bottom:8px">' + esc(n) + '</p>').join('') + '<div class="stack">' + wk.runs.map(r => runCardHtml(r, dk.has(r.key), {indoor:true})).join('') + '</div></section>';
   a += '<section class="sec"><div class="card"><h3>Chạy hoặc đi bộ ngoài lịch</h3><p class="small" style="margin-top:4px">Rảnh là chạy. App bấm giờ, đo quãng đường bằng GPS, đọc pace mỗi km, rồi cộng vào khối lượng tuần.</p><div class="btn-row"><button class="btn small primary" data-act="run-free">' + ICON.run + ' Chạy tự do</button><button class="btn small ghost" data-act="run-free" data-kind="walk">Đi bộ</button><button class="btn small ghost" data-act="log-run">Ghi tay</button></div></div></section>';
   let b = '<section class="sec first"><div class="sec-h"><h2>Pace và nhịp tim của bạn</h2></div><div class="card">' +
     '<div class="inline-form" style="margin-top:0"><label class="small" style="align-self:center;white-space:nowrap">5 km hết sức</label><input id="fiveIn" data-time inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3230 = 32:30" value="' + (p.fiveK ? fmtPace(p.fiveK) : '') + '"><button class="btn small primary" data-act="set-5k">Lưu</button></div>' +
     '<p class="hint">' + (ef ? (ef.src === 'nhập' ? 'Theo thời gian 5 km bạn nhập.' : 'Chưa nhập 5K: đang ước tính từ buổi chạy tốt nhất 60 ngày qua (' + fmtDur(ef.sec) + ').') : 'Chưa có: nhập thời gian 5 km gần nhất, gõ số liền, app tự thêm dấu “:”.') + (hrMax() ? ' Nhịp tim tối đa ước tính ' + hrMax() + ' (theo tuổi).' : ' Thêm tuổi trong Cài đặt để có số nhịp tim.') + '</p>' +
-    '<dl class="zones" style="margin-top:10px"><div><dt>Chạy dễ, chạy dài</dt><dd>' + (pc ? '<b>' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + '</b> /km · ' : '') + zoneText(2) + '</dd></div><div><dt>Pace đua 21 km</dt><dd>' + (pc ? '<b>' + fmtPace(pc.hm) + '</b> /km · ' : '') + zoneText(3) + '</dd></div><div><dt>Tempo, fartlek</dt><dd>' + (pc ? '<b>' + fmtPace(pc.tempo) + '</b> /km · ' : '') + zoneText(4) + '</dd></div><div><dt>Biến tốc, chạy dốc</dt><dd>' + (pc ? '<b>' + fmtPace(pc.inter) + '</b> /km · ' : '') + zoneText(5) + '</dd></div></dl>' +
+    '<dl class="zones" style="margin-top:10px"><div><dt>Chạy dễ, chạy dài</dt><dd>' + (pc ? '<b>' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + '</b> /km · ' : '') + zoneText(2) + '</dd></div><div><dt>Pace đua ' + (G.km ? G.n : '10 km') + '</dt><dd>' + (pc ? '<b>' + fmtPace(pc.hm) + '</b> /km · ' : '') + zoneText(3) + '</dd></div><div><dt>Tempo, fartlek</dt><dd>' + (pc ? '<b>' + fmtPace(pc.tempo) + '</b> /km · ' : '') + zoneText(4) + '</dd></div><div><dt>Biến tốc, chạy dốc</dt><dd>' + (pc ? '<b>' + fmtPace(pc.inter) + '</b> /km · ' : '') + zoneText(5) + '</dd></div></dl>' +
     '<p class="small muted" style="margin-top:8px">Khoảng 80% thời gian chạy nên ở vùng 2: chậm tới mức nói trọn câu được. Đây là vùng xây sức bền và đốt mỡ tốt nhất. Trời nóng ẩm thì chậm hơn 10–20 giây mỗi km là bình thường.</p></div></section>';
   const runs = S.logs.filter(l => l.kind === 'run' || l.kind === 'walk').slice(-10).reverse();
   b += '<section class="sec"><div class="sec-h"><h2>Buổi chạy gần đây</h2></div>' + (runs.length ? '<ul class="hist">' + runs.map(l => '<li><span class="h-d">' + viDate(l.d) + '</span><span>' + esc(l.title) + (l.planKey ? '' : ' <span class="tag t-extra">ngoài lịch</span>') + '</span><span class="h-v">' + num(r1(l.km)) + ' km' + (l.sec ? ' · ' + fmtPace(l.sec / l.km) : '') + '</span><button class="x" data-act="del-log" data-id="' + esc(l.id) + '" aria-label="Xóa">×</button></li>').join('') + '</ul>' : '<p class="empty">Chưa có buổi chạy nào.</p>') + '</section>';
   const rows = P.weeks.map(x => { const dn = x.runs.filter(q => dk.has(q.key)).length, cls = x.n === w ? 'cur' : (x.n < w ? 'past' : '');
     return '<tr class="' + cls + '"><th scope="row">' + x.n + '</th><td>' + PHASE_SHORT[x.cut ? 'cut' : x.phase] + '</td><td>' + num(x.runs[0].km) + '</td><td>' + esc(x.runs[1].title) + '</td><td><b>' + num(x.long) + '</b></td><td class="done-m">' + '●'.repeat(dn) + '○'.repeat(Math.max(0, 3 - dn)) + '</td></tr>'; }).join('');
-  b += '<section class="sec"><details class="plan"' + (UI.planOpen ? ' open' : '') + '><summary><h2>Toàn bộ ' + P.N + ' tuần</h2><span class="aside">Chạy dài tăng dần tới ' + num(P.peak) + ' km</span></summary><div class="tbl-wrap"><table><thead><tr><th>Tuần</th><th>Giai đoạn</th><th>Dễ</th><th>Chất lượng</th><th>Dài</th><th>Xong</th></tr></thead><tbody>' + rows + '</tbody></table></div><p class="small muted" style="padding:0 16px 14px">Đây là lộ trình gốc. Tuần này và tuần sau tự điều chỉnh theo quãng bạn chạy thật.</p></details></section>';
+  b += '<section class="sec"><details class="plan"' + (UI.planOpen ? ' open' : '') + '><summary><h2>Toàn bộ ' + P.N + ' tuần</h2><span class="aside">Chạy dài tăng dần tới ' + num(P.peak) + ' km</span></summary><div class="tbl-wrap"><table><thead><tr><th>Tuần</th><th>Giai đoạn</th><th>Dễ</th><th>Chất lượng</th><th>Dài</th><th>Xong</th></tr></thead><tbody>' + rows + '</tbody></table></div><p class="small muted" style="padding:0 16px 14px">Đây là lộ trình gốc. Tuần này và tuần sau tự điều chỉnh theo quãng bạn chạy thật. ' + (G.km ? 'Sau ngày đua lịch tự chuyển sang duy trì, không bao giờ hết bài.' : 'Sau tuần ' + P.N + ' lịch tự chuyển sang duy trì, không bao giờ hết bài.') + '</p></details></section>' + goalHistoryHtml();
   b += '<section class="sec"><ul class="tips"><li><b>Không cần chạy sáng</b>Chạy tối sau giờ làm hiệu quả như nhau. Ăn nhẹ một quả chuối trước 1–2 tiếng.</li><li><b>Mệt thì giảm, đừng bỏ</b>Buổi chất lượng mà người rã rời thì đổi thành chạy dễ 20 phút, vẫn được tính.</li><li><b>Biết khi nào dừng</b>Đau nhói, đau một điểm, sưng hoặc đau làm thay đổi dáng chạy: nghỉ 2–3 ngày. Không đỡ thì đi khám.</li></ul></section>';
   return cols(a, b);
 }
@@ -4899,14 +4987,15 @@ const TUTOR = [
   {k:['ngu','thuc khuya','ngu it'], a:'Ngủ 7–8 tiếng giúp hồi phục cơ, đỡ thèm ăn và có sức tập. Trang Giấc ngủ theo dõi giấc ngủ bằng micro và cảm biến của iPhone, chấm điểm, có báo thức lúc ngủ nông, thiền ngủ, truyện ngủ và âm thanh ru ngủ. Chạy tối thì xong trước giờ ngủ ít nhất 1,5 tiếng.', act:[A('Mở Giấc ngủ','go',{v:'giac-ngu',s:'dem-qua'}), A('Quét cơ thể trước khi ngủ','med-start',{k:'scan'})]},
   {k:['troi mua','mua to','dang mua','mua roi','khong ra ngoai','trong nha','khong chay duoc'], a:'Trời mưa thì có nhóm “Cardio trong nhà”: nhảy dây, bước nhanh, đấm gió, leo cầu thang theo nhịp đều, thay được buổi chạy dễ hoặc chất lượng. Riêng buổi chạy dài thì dời sang hôm khác trong tuần bằng nút Đổi ngày.', act:[A('Cardio trong nhà 25 phút','start-focus',{f:'trong-nha',m:25})]},
   {k:['nong','troi nong','oi buc','troi nang','nang nong'], a:'Trời nóng ẩm: chạy tối hoặc sáng sớm, chậm hơn 10–20 giây mỗi km là bình thường. Mặc đồ sáng màu, mang nước. Thấy chóng mặt, nổi da gà giữa trời nóng, ngừng đổ mồ hôi thì dừng ngay, vào chỗ mát.'},
-  {k:['pace','toc do','chay nhanh','chay cham','nhip chay'], a:() => { const p = S.profile; if(!p.fiveK) return 'Chưa có thời gian 5 km nên app hướng dẫn theo cảm giác: chạy dễ là vẫn nói trọn câu, tempo là chỉ nói được vài từ. Chạy thử 5 km hết sức rồi nhập ở Vận động › Chạy (gõ số liền, ví dụ 3230 là 32:30), app sẽ tính pace cho từng buổi.'; const pc = paces(p.fiveK); return 'Theo thời gian 5 km của bạn: chạy dễ ' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + ' mỗi km, tempo ' + fmtPace(pc.tempo) + ', pace half marathon ' + fmtPace(pc.hm) + ', dự đoán về đích khoảng ' + fmtHM(pc.hmTotal) + '. Phần lớn các buổi chạy nên ở mức dễ.'; }, act:[A('Xem lộ trình 21K','go',{v:'van-dong',s:'chay'})]},
+  {k:['pace','toc do','chay nhanh','chay cham','nhip chay'], a:() => { const p = S.profile; if(!p.fiveK) return 'Chưa có thời gian 5 km nên app hướng dẫn theo cảm giác: chạy dễ là vẫn nói trọn câu, tempo là chỉ nói được vài từ. Chạy thử 5 km hết sức rồi nhập ở Vận động › Chạy (gõ số liền, ví dụ 3230 là 32:30), app sẽ tính pace cho từng buổi.'; const pc = paces(p.fiveK); return 'Theo thời gian 5 km của bạn: chạy dễ ' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + ' mỗi km, tempo ' + fmtPace(pc.tempo) + ', pace half marathon ' + fmtPace(pc.hm) + ', dự đoán về đích khoảng ' + fmtHM(pc.hmTotal) + '. Phần lớn các buổi chạy nên ở mức dễ.'; }, act:[A('Xem lộ trình','go',{v:'van-dong',s:'chay'})]},
   {k:['lo buoi','bo lo','bo tap','nghi may ngay','quen tap','lo lich','tre lich','bo buoi','nghi lau'], a:'Lỡ buổi không sao. Quy tắc duy nhất: không bỏ lỡ hai ngày liền. Buổi chưa làm hiện ở mục “Làm bù trong tuần” trên trang Hôm nay, làm ngày nào cũng tính. Bỏ cả tuần chạy cũng không sao: lịch tuần sau tự hạ quãng chạy dài cho vừa sức. Nghỉ trên 2 tuần thì quay lại với quãng chạy ngắn hơn một nửa.', act:[A('2 phút giữ nhịp','quick2')]},
   {k:['bao lau','khi nao','may tuan','bao gio thay','ket qua','bao lau thi'], a:'Thường thấy: sau 2 tuần ngủ ngon hơn, đỡ mệt khi leo cầu thang; sau 4 tuần chạy nhẹ nhàng hơn rõ, vòng bụng bắt đầu giảm; sau 8–12 tuần quần áo rộng ra, thấy đường nét vai và bắp chân. Điều quyết định là đều đặn, không phải tập thật nặng.'},
   {k:['giay','giay chay','mua giay'], a:'Giày chạy đúng size, mũi giày dư khoảng một đốt ngón tay, đi thử vào buổi chiều khi chân hơi nở. Không cần giày đắt, cần giày êm và vừa. Thay giày sau khoảng 600–800 km hoặc khi đế hết êm.'},
   {k:['tho','hut hoi','tho doc','tho khi chay','kho tho khi chay'], a:'Hụt hơi khi chạy thường là do chạy nhanh quá. Chạy chậm tới mức nói được trọn câu, thở bằng cả mũi và miệng, thở ra dài. Có thể đếm nhịp: hít vào 3 bước, thở ra 2–3 bước. Khó thở bất thường kèm đau ngực hoặc chóng mặt thì dừng và đi khám.'},
   {k:['khoi dong'], a:'Mọi buổi tập từ 10 phút trở lên trong app đã có 2 phút khởi động. Trước khi chạy: đi bộ nhanh 3 phút, xoay hông, đá lăng chân, rồi chạy thật chậm 5 phút đầu. Buổi chạy nhanh thì khởi động 1,5 km chạy dễ như ghi trong buổi tập.'},
   {k:['chay sang','chay buoi sang','buoi sang','chay toi','buoi toi','sau gio lam'], a:'Không cần dậy sớm. Chạy tối sau giờ làm có hiệu quả như chạy sáng, có khi còn khỏe hơn vì cơ thể đã ấm. Lịch của bạn để hai buổi chạy vào tối trong tuần, buổi chạy dài vào cuối tuần, sáng hoặc chiều mát như bạn quen.'},
-  {k:['21 km','21km','half marathon','ngay dua','giai chay','ve dich','dang ky giai'], a:() => 'Ngày đua dự kiến ' + fullDate(raceDay()) + '. Tuần đua chỉ chạy nhẹ, không thử giày, đồ ăn hay quần áo mới. Ngày đua: xuất phát chậm ở 3 km đầu, uống nước ở trạm, đi bộ một chút khi mệt cũng được. Mục tiêu đầu tiên là về đích khỏe.', act:[A('Xem lộ trình 21K','go',{v:'van-dong',s:'chay'})]},
+  {k:['muc tieu chay','doi muc tieu','42 km','42km','42k','marathon','10 km','10km','10k','5 km','5k','chay xong roi','sau ngay dua','tiep theo'], a:() => { const G = goalOf(); return 'Mục tiêu hiện tại: ' + (G.km ? 'lộ trình ' + G.s + ' (' + G.full + ')' : 'chạy để khỏe lâu dài') + '. Đổi lúc nào cũng được trong Vận động › Chạy › Đổi mục tiêu: 5K, 10K, 21K, 42K hoặc Khỏe lâu dài. Mỗi lần đổi app lập lộ trình mới từ tuần này theo sức hiện tại, nhật ký cũ giữ nguyên. Lên 42K thì nên chạy xong 21K trước và có ít nhất 16–20 tuần. Sau ngày đua lịch tự chuyển sang duy trì nên không bao giờ hết bài.'; }, act:[A('Đổi mục tiêu','goal-open',{})]},
+  {k:['21 km','21km','half marathon','ngay dua','giai chay','ve dich','dang ky giai'], a:() => (raceDay() ? 'Ngày đua ' + goalOf().s + ' dự kiến ' + fullDate(raceDay()) + '.' : 'Bạn đang ở chế độ Khỏe lâu dài, chưa có ngày đua.') + ' Tuần đua chỉ chạy nhẹ, không thử giày, đồ ăn hay quần áo mới. Ngày đua: xuất phát chậm ở 3 km đầu, uống nước ở trạm, đi bộ một chút khi mệt cũng được. Mục tiêu đầu tiên là về đích khỏe.', act:[A('Xem lộ trình','go',{v:'van-dong',s:'chay'})]},
   {k:['gian co','cang co','deo dai','cung nguoi'], a:'Giãn cơ sau buổi chạy hoặc vào ngày phục hồi: hông, đùi trước, đùi sau, bắp chân, mông. Giữ mỗi tư thế 30–45 giây, thở chậm, không nhún. Lịch đã có một buổi giãn cơ 15 phút sau ngày chạy dài.', act:[A('Giãn cơ 15 phút','start-focus',{f:'phuc-hoi',m:15})]},
   {k:['sao luu','chuyen may','ipad','iphone','may khac','dong bo','may ca nhan','chuyen du lieu'], a:'Cài đặt (nút bánh răng góc trên), mục “Sao lưu và chuyển máy”. Máy cũ: Chép mã sao lưu, gửi qua Teams, email hay Ghi chú. Máy mới: dán mã, bấm Nhập tiến độ. Dữ liệu hai máy được gộp lại.', act:[A('Mở phần sao lưu','go-backup')]},
   {k:['kiem tra the luc','kiem tra','do suc','test'], a:'Mỗi đầu tháng lịch có một buổi kiểm tra: chống đẩy liền một lượt, squat 1 phút, plank lâu nhất, treo xà lâu nhất, hít xà, nhảy dây 1 phút. So với tháng trước để thấy mình tiến bộ, kể cả khi cân nặng chưa đổi.', act:[A('Làm bài kiểm tra','open-test',{key:''})]},
@@ -4940,7 +5029,7 @@ const TUTOR = [
   {k:['so buoc','buoc chan','suc khoe iphone','apple health','huawei'], a:'Web app không đọc thẳng được app Sức khỏe, nên dùng Phím tắt iPhone: tạo một lần, sau đó mỗi ngày chạy Phím tắt rồi bấm “Dán dữ liệu Sức khỏe” ở trang Hôm nay. Đồng hồ Huawei: bật chia sẻ dữ liệu từ app Huawei Health sang Apple Sức khỏe trước.', act:[A('Cách làm Phím tắt','hk-guide')]},
   {k:['gps','chay co huong dan','do quang duong','pace moi km'], a:'Bấm “Chạy có hướng dẫn” trên buổi chạy: app đo quãng đường bằng GPS, đọc pace mỗi km, báo từng đoạn khởi động, chạy nhanh, hồi sức. Giữ app mở, đừng khóa màn hình vì iPhone dừng GPS khi khóa máy.', act:[A('Mở Chạy','go',{v:'van-dong',s:'chay'})]},
   {k:['khong co xa','khong co ta','thieu dung cu','dung cu'], a:'Trong Vận động › Bài tập, bỏ chọn dụng cụ bạn không có. App tự thay: hít xà thành kéo người dưới bàn, tạ thành bài tay không hoặc dùng ghế, dây nhảy thành bật nhảy.', act:[A('Mở Bài tập','go',{v:'van-dong',s:'bai-tap'})]},
-  {k:['cam on','thanks','thank'], a:'Không có gì! Cứ đều đặn từng chút là tới 21 km.'}
+  {k:['cam on','thanks','thank'], a:'Không có gì! Cứ đều đặn từng chút là tới đích.'}
 ];
 const Tutor = {
   answer(q){
@@ -4982,6 +5071,122 @@ Object.assign(ACT, {
   'coach-send': () => coachSend($('#coachIn') ? $('#coachIn').value : ''),
   'coach-quick': b => coachSend(b.dataset.q)
 });
+
+/* ================= mục tiêu chạy: 5K, 10K, 21K, 42K hoặc khỏe lâu dài ================= */
+function nextGoals(G){
+  const k = G.s;
+  if(k === '5K') return ['10k', 'fit', '5k'];
+  if(k === '10K') return ['21k', 'fit', '10k'];
+  if(k === '21K') return ['42k', '21k', 'fit'];
+  if(k === '42K') return ['42k', '21k', 'fit'];
+  return ['10k', '21k', 'fit'];
+}
+function goalTmp(o){
+  const p = Object.assign({}, S.profile, {dist:o.dist, level:o.level, raceDate:o.dist === 'fit' ? null : (o.race || null), fitLong:o.fitLong, season:(S.profile.season || 0) + 1});
+  placeStart(p);
+  return p;
+}
+function goalPreview(o){
+  const p = goalTmp(o), G = goalOf(p), P = buildPlan(p), need = G.weeks[p.level];
+  const rd = G.km ? (p.raceDate || addDays(p.planStart, (P.N - 1) * 7 + 6)) : null;
+  let t = '<ul class="tips"><li><b>' + (G.km ? P.N + ' tuần tới ngày đua' : P.N + ' tuần lên nền, rồi duy trì mãi') + '</b>' +
+    (G.km ? 'Ngày đua ' + fullDate(rd) + '. Chạy dài tăng dần tới ' + num(P.peak) + ' km' + (G.taper > 1 ? ', giảm tải 2 tuần cuối.' : ', giảm tải tuần cuối.') : 'Chạy dài tăng 1 km mỗi tuần tới ' + num(P.peak) + ' km rồi giữ, cứ 4 tuần có 1 tuần nhẹ.') + '</li>' +
+    '<li><b>Mỗi tuần</b>3 buổi chạy (dễ, chất lượng, dài) + 2 buổi tạ + đốt mỡ, core. Vẫn tự điều chỉnh theo quãng bạn chạy thật.</li>' +
+    (G.km ? '<li><b>Sau ngày đua</b>1 tuần hồi phục, rồi tự chuyển sang duy trì (chạy dài ' + num(G.maint) + ' km) cho tới khi bạn chọn mục tiêu mới.</li>' : '') + '</ul>';
+  if(G.km > 40 && ['lt3', '3-5', '5-8'].includes(p.level)) t += '<p class="note warn small">Marathon từ mức này cần khoảng ' + need + ' tuần. An toàn hơn: chạy 21K trước, xong rồi lên 42K.</p>';
+  if(G.km && P.N < need - 2) t += '<p class="note warn small">Ngày đua hơi gấp: mức hiện tại nên có khoảng ' + need + ' tuần. Lộ trình vẫn chạy được nhưng ưu tiên về đích an toàn.</p>';
+  if(G.km && p.raceDate && diffDays(p.planStart, mondayOf(p.raceDate)) / 7 + 1 > maxWeeks(p)) t += '<p class="note small">Ngày đua còn xa: lộ trình ' + P.N + ' tuần sẽ bắt đầu từ ' + viDate(p.planStart) + ', trước đó là các tuần chạy nhẹ giữ thói quen.</p>';
+  return t;
+}
+function goalSheetHtml(){
+  const o = UI.goal, G = GOALS[o.dist], sug = levelFromLogs(), p = S.profile;
+  return '<p class="small">Đổi lúc nào cũng được. Mỗi lần đổi là một lộ trình mới bắt đầu từ tuần này; nhật ký, kỷ lục và các buổi đã chạy trong tuần này vẫn được giữ và tính vào lộ trình mới.</p>' +
+    '<div class="field"><span>Mục tiêu</span><div class="chips">' + GOAL_ORDER.map(k => '<button class="chip" data-act="goal-dist" data-v="' + k + '" aria-pressed="' + (o.dist === k) + '">' + (k === 'fit' ? 'Khỏe lâu dài' : GOALS[k].s) + '</button>').join('') + '</div><small>' + esc(G.full.charAt(0).toUpperCase() + G.full.slice(1)) + (o.dist === p.dist ? ' · đang theo mục tiêu này' : '') + '</small></div>' +
+    '<label class="field"><span>Hiện bạn chạy liền được bao xa?</span><select id="goLevel">' + Object.keys(LEVELS).map(k => '<option value="' + k + '"' + (o.level === k ? ' selected' : '') + '>' + LEVELS[k].n + '</option>').join('') + '</select>' + (sug ? '<small>Gợi ý theo buổi dài nhất 4 tuần qua: ' + LEVELS[sug].n.toLowerCase() + '.</small>' : '') + '</label>' +
+    (o.dist === 'fit'
+      ? '<div class="field"><span>Chạy dài cuối tuần muốn giữ ở</span><div class="chips">' + FIT_LONG.map(v => '<button class="chip" data-act="goal-fit" data-v="' + v + '" aria-pressed="' + (+o.fitLong === v) + '">' + v + ' km</button>').join('') + '</div><small>8–12 km là mức nhiều người giữ được lâu dài, đủ khỏe tim và giữ dáng.</small></div>'
+      : '<label class="field"><span>Ngày đua (nếu đã đăng ký giải)</span><input id="goRace" type="date" min="' + addDays(todayStr(), 28) + '" value="' + esc(o.race || '') + '"><small>Để trống thì app tự xếp theo mức chạy của bạn.</small></label>') +
+    '<div id="goalPrev">' + goalPreview(o) + '</div>' +
+    '<p class="form-err" id="goErr" hidden></p><div class="btn-col"><button class="btn primary" data-act="goal-save">Bắt đầu lộ trình mới</button></div>';
+}
+function openGoal(dist){
+  const p = S.profile;
+  UI.goal = {dist:dist || p.dist || '21k', level:levelFromLogs() || p.level, race:dist && dist !== p.dist ? '' : (p.raceDate || ''), fitLong:p.fitLong || 10};
+  openSheet('Mục tiêu chạy', goalSheetHtml());
+}
+function goalRedraw(){ const r = $('#goRace'); if(r) UI.goal.race = r.value; const l = $('#goLevel'); if(l) UI.goal.level = l.value; const pn = $('#sheet .sheet-panel'), st = pn ? pn.scrollTop : 0; openSheet('Mục tiêu chạy', goalSheetHtml()); const p2 = $('#sheet .sheet-panel'); if(p2) p2.scrollTop = st; }
+function goalHistoryHtml(){
+  const H = (S.profile.history || []).filter(h => h.start && h.end && diffDays(h.start, h.end) >= 7);
+  if(!H.length) return '';
+  return '<section class="sec"><div class="sec-h"><h2>Các mục tiêu đã qua</h2></div><ul class="hist">' + H.slice().reverse().map(h => {
+    const G = GOALS[h.dist] || GOALS['21k'], r = h.result;
+    return '<li><span class="h-d">' + viDate(h.start) + '</span><span>' + esc(G.km ? 'Lộ trình ' + G.s : 'Khỏe lâu dài') + ' <span class="muted small">tới ' + viDate(h.end) + '</span></span><span class="h-v">' + (r ? num(r1(r.km)) + ' km' + (r.sec ? ' · ' + fmtDur(r.sec) : '') : '') + '</span></li>';
+  }).join('') + '</ul></section>';
+}
+Object.assign(ACT, {
+  'goal-open': b => openGoal(b && b.dataset && b.dataset.v),
+  'goal-dist': b => { UI.goal.dist = b.dataset.v; if(b.dataset.v !== S.profile.dist) UI.goal.race = ''; goalRedraw(); },
+  'goal-fit': b => { UI.goal.fitLong = +b.dataset.v; goalRedraw(); },
+  'goal-save': () => {
+    const o = UI.goal, r = $('#goRace'), l = $('#goLevel');
+    if(r) o.race = r.value; if(l) o.level = l.value;
+    if(o.dist !== 'fit' && o.race && diffDays(todayStr(), o.race) < 28){ showErr('goErr', 'Ngày đua nên cách hôm nay ít nhất 4 tuần.'); return; }
+    startSeason(S.profile, {dist:o.dist, level:o.level, raceDate:o.race || null, fitLong:o.fitLong});
+    S = normalize(S); persist(); closeSheet(); go('van-dong', 'chay'); renderAll(); window.scrollTo(0, 0);
+    const G = goalOf(), P = getPlan();
+    toast(G.km ? 'Đã lập lộ trình ' + G.s + ': ' + P.N + ' tuần.' : 'Đã chuyển sang Khỏe lâu dài.');
+  }
+});
+document.addEventListener('change', e => { const t = e.target; if(!t || !UI.goal) return; if(t.id === 'goLevel' || t.id === 'goRace'){ goalRedraw(); } });
+
+/* ================= dùng lâu dài: gọn dữ liệu cũ mà không mất số liệu ================= */
+/* Bản ghi cũ hơn 1 năm được gộp theo ngày: tổng phút thiền, phút tập trung, phút đọc, kcal và đạm vẫn giữ đúng,
+   chỉ bỏ chi tiết từng lần. Buổi chạy, buổi tập, số đo, nhật ký cảm xúc giữ nguyên. */
+function compactOld(force){
+  const now = Date.now(); S.meta = S.meta || {};
+  if(!force && S.meta.compactAt && now - S.meta.compactAt < 20 * 864e5) return 0;
+  const lim = addDays(todayStr(), -366); let n0 = 0, n1 = 0;
+  const merge = (k, keyOf, make) => {
+    const keep = [], groups = new Map();
+    S[k].forEach(x => { if(x.d >= lim){ keep.push(x); return; } const g = keyOf(x); if(!groups.has(g)) groups.set(g, []); groups.get(g).push(x); });
+    groups.forEach((L, g) => {
+      n0 += L.length;
+      const z = L.find(x => x.z);
+      if(z && L.length === 1){ keep.push(z); n1++; return; }
+      const src = z ? [z] : L; /* đã gộp ở máy khác thì không cộng lại lần nữa */
+      keep.push(Object.assign(make(src, g), {id:'z' + g, d:src[0].d, t:src[0].t || 0, z:1})); n1++;
+    });
+    S[k] = keep.sort((a, b) => (a.t || 0) - (b.t || 0));
+  };
+  const cnt = L => sum(L, x => x.n || 1);
+  merge('mindLog', x => x.d + (x.kind || ''), L => ({kind:L[0].kind, k:L[0].k, min:sum(L, x => x.min || 0), n:cnt(L)}));
+  merge('focusLog', x => x.d + (x.cat || 'work'), L => ({cat:L[0].cat || 'work', mode:L[0].mode, min:sum(L, x => x.min || 0), n:cnt(L), full:true}));
+  merge('readLog', x => x.d + (x.book || ''), L => ({book:L[0].book, min:sum(L, x => x.min || 0), pages:sum(L, x => x.pages || 0), n:cnt(L)}));
+  merge('food', x => x.d + (x.meal || ''), L => ({meal:L[0].meal, n:'Cả bữa (đã gộp)', q:1, kcal:Math.round(sum(L, x => x.kcal || 0)), p:Math.round(sum(L, x => x.p || 0))}));
+  /* vận động giữa giờ: gộp số lần theo ngày */
+  const sn = S.logs.filter(l => l.kind === 'snack' && l.d < lim && !l.z), byD = {};
+  if(sn.length){ sn.forEach(l => { (byD[l.d] = byD[l.d] || []).push(l); }); S.logs = S.logs.filter(l => !(l.kind === 'snack' && l.d < lim && !l.z));
+    Object.keys(byD).forEach(d => { if(!S.logs.some(l => l.id === 'zs' + d)) S.logs.push({id:'zs' + d, kind:'snack', d, t:byD[d][0].t || 0, title:'Vận động giữa giờ (gộp ' + byD[d].length + ' lần)', min:sum(byD[d], x => x.min || 0), n:byD[d].length, z:1}); });
+    S.logs.sort((a, b) => (a.t || 0) - (b.t || 0)); n0 += sn.length; n1 += Object.keys(byD).length; }
+  /* giấc ngủ cũ: giữ điểm, thời lượng, tỉ lệ các giai đoạn; bỏ dữ liệu từng 30 giây */
+  S.sleep.forEach(nt => { if(nt.d < addDays(todayStr(), -60)){ delete nt.ep; } if(nt.d < lim){ delete nt.ev; delete nt.hyp; } });
+  /* việc đã xong hơn 1 năm: bỏ */
+  const tl = Date.now() - 366 * 864e5; S.todos = S.todos.filter(t => !t.done || (t.doneAt || t.u || t.created || 0) > tl);
+  S.meta.compactAt = now;
+  return n0 - n1;
+}
+function dataSize(){ try{ return JSON.stringify(S).length; }catch(e){ return 0; } }
+function backupDue(){
+  const p = S.profile; if(!p) return false;
+  const M = S.meta || {}, last = M.bkAt || 0, age = diffDays(p.created, todayStr());
+  return age >= 14 && Date.now() - last > 30 * 864e5 && Date.now() - (M.bkSnooze || 0) > 7 * 864e5;
+}
+function backupNudgeHtml(){
+  if(!backupDue() || UI.bkHide) return '';
+  const last = S.meta && S.meta.bkAt;
+  return '<section class="sec"><div class="card"><h3>Sao lưu tháng này</h3><p class="small" style="margin-top:4px">' + (last ? 'Lần sao lưu gần nhất ' + viDate(ymd(new Date(last))) + '.' : 'Bạn chưa sao lưu lần nào.') + ' Dữ liệu chỉ nằm trên máy này: xóa icon app khỏi màn hình chính là mất. Mỗi tháng tải 1 file sao lưu (vài trăm KB) cất vào Tệp hoặc gửi qua Teams là đủ an toàn.</p><div class="btn-row"><button class="btn small primary" data-act="go-backup">Sao lưu ngay</button><button class="btn small ghost" data-act="bk-later">Để sau</button></div></div></section>';
+}
+Object.assign(ACT, { 'bk-later': () => { UI.bkHide = true; S.meta = S.meta || {}; S.meta.bkSnooze = Date.now(); persist(); renderAll(); } });
 
 function kmChart(){
   const weeks = [], m = mondayOf(todayStr());
@@ -5133,12 +5338,11 @@ function openSettings(){
       '<label class="field"><span>Phút vận động</span><select id="stMove">' + [20,30,45,60].map(v => '<option' + (p.moveGoal === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label>' +
       '<label class="field"><span>Ngày vận động / tuần</span><select id="stAct">' + [3,4,5,6].map(n => '<option' + (p.activeGoal === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label>' +
       '<label class="field"><span>Vận động giữa giờ / ngày</span><select id="stSnack">' + [3,4,5,6,8].map(n => '<option' + (p.snackTarget === n ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label></div></div></details>' +
-    '<details class="plan" style="margin-top:10px"><summary><h2>Lộ trình chạy 21K</h2></summary><div class="bk">' +
+    '<details class="plan" style="margin-top:10px"><summary><h2>Mục tiêu và lịch chạy</h2><span class="aside">' + esc(goalOf().km ? 'Lộ trình ' + goalOf().s : 'Khỏe lâu dài') + '</span></summary><div class="bk">' +
+      '<div class="card" style="margin-bottom:12px"><p class="small"><b>' + esc(goalOf().km ? 'Đang theo lộ trình ' + goalOf().s + ' (' + goalOf().full + ')' : 'Đang chạy để khỏe lâu dài, chạy dài giữ ' + (p.fitLong || 10) + ' km') + '</b>' + (raceDay() ? ', ngày đua ' + viDate(raceDay()) : '') + '.</p><div class="btn-row"><button class="btn small primary" data-act="goal-open">Đổi mục tiêu: 5K, 10K, 21K, 42K…</button></div></div>' +
       '<div id="stDays">' + stDaysHtml() + '</div>' +
-      '<label class="field"><span>Mức chạy khi bắt đầu lộ trình</span><select id="stLevel">' + Object.keys(LEVELS).map(k => '<option value="' + k + '"' + (p.level === k ? ' selected' : '') + '>' + LEVELS[k].n + '</option>').join('') + '</select></label>' +
       '<label class="field"><span>Thời gian chạy 5 km</span><input id="stFive" data-time inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3230 = 32:30" value="' + (p.fiveK ? fmtPace(p.fiveK) : '') + '"><small>Gõ số liền, app tự thêm dấu “:”. Để trống thì app ước tính từ các buổi chạy.</small></label>' +
-      '<label class="field"><span>Ngày đua</span><input id="stRace" type="date" min="' + addDays(todayStr(), 28) + '" value="' + (p.raceDate || '') + '"><small>Để trống thì app tự xếp lịch theo mức chạy.</small></label>' +
-      '<label class="check"><input type="checkbox" id="stRestart"> Bắt đầu lại lộ trình 21K từ tuần này</label></div></details>' +
+      '</div></details>' +
     '<details class="plan" style="margin-top:10px"><summary><h2>Âm thanh</h2></summary><div class="bk">' +
       '<label class="check"><input type="checkbox" id="stSound"' + (p.sound ? ' checked' : '') + '> Tiếng bíp đếm ngược và chuông nhắc</label>' +
       '<label class="check"><input type="checkbox" id="stVoice"' + (p.voice ? ' checked' : '') + '> Giọng đọc' + (voice ? '' : ' <span class="muted small">(máy này chưa có giọng tiếng Việt)</span>') + '</label>' +
@@ -5155,7 +5359,7 @@ function openSettings(){
     '<p class="form-err" id="stErr" hidden></p><div class="btn-col"><button class="btn primary" data-act="save-settings">Lưu cài đặt</button></div>' +
     '<div class="sec" id="resetBox"><button class="linkish" data-act="reset-ask">Xóa toàn bộ dữ liệu trên máy này</button></div><p class="small muted" style="margin-top:10px">Nhịp 21 phiên bản ' + APP_VER + '. Dữ liệu chỉ nằm trên máy này, không gửi đi đâu.</p>');
   storageInfo().then(st => { const b = $('#storeBox'); if(!b) return; const mb = x => num(r1(x / 1048576)) + ' MB';
-    b.innerHTML = '<ul class="tips"><li><b>Nhật ký, lịch, giấc ngủ</b>' + num(r1(st.ls / 1024)) + ' KB</li><li><b>Đoạn ghi âm khi ngủ</b>' + st.clips + ' đoạn, ' + mb(st.clipB) + ' (tự xóa sau 7 ngày)</li><li><b>Nhạc của bạn</b>' + st.own + ' file, ' + mb(st.ownB) + '</li></ul><div class="btn-row"><button class="btn small ghost" data-act="clips-clear">Xóa hết đoạn ghi âm</button><button class="btn small ghost" data-act="old-trim">Gọn nhật ký cũ hơn 1 năm</button></div>'; });
+    b.innerHTML = '<ul class="tips"><li><b>Nhật ký, lịch, giấc ngủ</b>' + num(r1(st.ls / 1024)) + ' KB</li><li><b>Đoạn ghi âm khi ngủ</b>' + st.clips + ' đoạn, ' + mb(st.clipB) + ' (tự xóa sau 7 ngày)</li><li><b>Nhạc của bạn</b>' + st.own + ' file, ' + mb(st.ownB) + '</li></ul><div class="btn-row"><button class="btn small ghost" data-act="clips-clear">Xóa hết đoạn ghi âm</button><button class="btn small ghost" data-act="compact-now">Gộp dữ liệu cũ hơn 1 năm</button></div><p class="hint">Dùng nhiều năm vẫn nhẹ: mỗi tháng app tự gộp bản ghi cũ hơn 1 năm theo ngày (tổng phút thiền, tập trung, đọc, kcal vẫn đúng), buổi chạy, buổi tập và số đo giữ nguyên. Dung lượng hiện tại ' + num(r1(st.ls / 1024)) + ' KB trên khoảng 5.000 KB trình duyệt cho phép.' + (S.meta.bkAt ? ' Sao lưu gần nhất ' + viDate(ymd(new Date(S.meta.bkAt))) + '.' : ' Chưa sao lưu lần nào.') + '</p>'; });
 }
 function stDaysHtml(){
   return '<div class="field"><span>Ngày chạy dài</span><div class="chips">' + dayChips('st-long', [UI.st.longDay], [5,6]) + '</div></div>' +
@@ -5179,27 +5383,24 @@ Object.assign(ACT, {
     const age = parseInt($('#stAge').value, 10) || null, h = parseInt($('#stH').value, 10) || null, hr = parseInt($('#stHr').value, 10) || null;
     if(age && (age < 12 || age > 90)){ showErr('stErr', 'Tuổi chưa hợp lệ.'); return; }
     if(h && (h < 120 || h > 230)){ showErr('stErr', 'Chiều cao tính bằng cm, ví dụ 170.'); return; }
-    const race = $('#stRace').value || null;
-    if(race && race !== p.raceDate && diffDays(todayStr(), race) < 28){ showErr('stErr', 'Ngày đua nên cách hôm nay ít nhất 4 tuần.'); return; }
-    const restart = $('#stRestart').checked || race !== p.raceDate || $('#stLevel').value !== p.level;
     const one = id => { const c = $('#' + id + ' .chip[aria-pressed="true"]'); return c ? c.dataset.v : null; };
-    Object.assign(p, {level:$('#stLevel').value, fiveK:five, raceDate:race, longDay:UI.st.longDay, runDays:UI.st.runDays.slice().sort((a, b) => a - b), age, height:h, hrMax:hr && hr > 120 && hr < 230 ? hr : null,
+    Object.assign(p, {fiveK:five, longDay:UI.st.longDay, runDays:UI.st.runDays.slice().sort((a, b) => a - b), age, height:h, hrMax:hr && hr > 120 && hr < 230 ? hr : null,
       sex:one('stSex') || p.sex, goal:one('stGoal') || p.goal, bottleMl:+$('#stBottle').value, stepGoal:+$('#stSteps').value, sleepGoal:+$('#stSleep').value, mindGoal:+$('#stMind').value, readGoal:+$('#stRead').value, moveGoal:+$('#stMove').value,
       activeGoal:+$('#stAct').value, snackTarget:+$('#stSnack').value, sound:$('#stSound').checked, voice:$('#stVoice').checked});
-    if(restart){ placeStart(p); S.swaps = {}; S.moves = {}; S.avail = {}; }
-    S = normalize(S); persist(); closeSheet(); renderAll(); toast(restart ? 'Đã lập lại lộ trình ' + getPlan().N + ' tuần.' : 'Đã lưu cài đặt.');
+    S = normalize(S); persist(); closeSheet(); renderAll(); toast('Đã lưu cài đặt.');
   },
   'reset-ask': () => { $('#resetBox').innerHTML = '<p class="small">Xóa hết nhật ký, số đo, giấc ngủ, việc cần làm trên máy này? Không hoàn tác được. Nên chép mã sao lưu trước.</p><div class="btn-row"><button class="btn small danger" data-act="reset-do">Xóa hết</button><button class="btn small ghost" data-act="sheet-close">Thôi</button></div>'; },
   'reset-do': () => { S = blank(); _sch = {}; _adapt = {}; try{ localStorage.removeItem(LS_KEY); }catch(e){} clipsDel(); closeSheet(); renderAll(); },
   'clips-clear': () => { clipsDel().then(() => { toast('Đã xóa hết đoạn ghi âm.'); closeSheet(); }); },
+  'compact-now': () => { const n = compactOld(true); persist(); toast(n > 0 ? 'Đã gộp ' + n + ' bản ghi cũ.' : 'Chưa có gì cần gộp.'); closeSheet(); },
   'old-trim': () => { const lim = addDays(todayStr(), -366); ['logs','food','mindLog','focusLog','readLog'].forEach(k => { S[k] = S[k].filter(x => x.d >= lim); }); S.sleep.forEach(n => { if(n.d < lim){ delete n.ep; delete n.ev; delete n.hyp; } }); persist(); toast('Đã gọn dữ liệu cũ.'); closeSheet(); },
   'bk-copy': async () => {
     const code = Backup.code(), out = $('#bkOut'); out.value = code; out.hidden = false;
-    const ok = await copyText(code);
+    const ok = await copyText(code); if(ok){ S.meta.bkAt = Date.now(); persist(); }
     $('#bkMsg').textContent = ok ? 'Đã chép ' + code.length.toLocaleString('vi-VN') + ' ký tự. Dán vào Teams, email hoặc Ghi chú rồi mở ở máy kia.' : 'Không chép tự động được. Chạm vào ô mã ở trên, chọn tất cả rồi chép.';
     if(!ok){ out.focus(); out.select(); }
   },
-  'bk-file': () => { dl(new Blob([Backup.code()], {type:'text/plain'}), 'Nhip21-sao-luu-' + todayStr() + '.txt'); $('#bkMsg').textContent = 'Đã tải file sao lưu.'; },
+  'bk-file': () => { S.meta.bkAt = Date.now(); persist(); dl(new Blob([Backup.code()], {type:'text/plain'}), 'Nhip21-sao-luu-' + todayStr() + '.txt'); $('#bkMsg').textContent = 'Đã tải file sao lưu.'; },
   'bk-import': () => doImport($('#bkIn').value)
 });
 document.addEventListener('change', e => { if(e.target && e.target.id === 'bkFile' && e.target.files && e.target.files[0]){ e.target.files[0].text().then(t => { const i = $('#bkIn'); if(i) i.value = t; doImport(t); }); } });
@@ -5209,19 +5410,23 @@ function renderOnboarding(){
   const el = $('#v-onboard'), o = UI.ob;
   el.innerHTML = '<div class="ob">' +
     '<h1 class="ob-h">Khỏe người, nhẹ đầu, sống có nhịp.</h1>' +
-    '<p>Nhịp 21 là HLV bỏ túi: lịch chạy 21 km tự điều chỉnh theo sức bạn, bài tập có ảnh động cho tạ đơn 5 kg, xà đơn, dây nhảy; thiền theo chủ đề, theo dõi giấc ngủ, dậy sớm, dinh dưỡng, việc cần làm và tập trung.</p>' +
+    '<p>Nhịp 21 là HLV bỏ túi: lịch chạy 5K, 10K, 21K tới marathon tự điều chỉnh theo sức bạn, bài tập có ảnh động cho tạ đơn 5 kg, xà đơn, dây nhảy; thiền theo chủ đề, theo dõi giấc ngủ, dậy sớm, dinh dưỡng, việc cần làm và tập trung.</p>' +
     '<p class="note small">Đã dùng Nhịp 21 ở máy khác? Lập lịch nhanh rồi vào Cài đặt › Sao lưu và chuyển máy để nhập dữ liệu cũ.</p>' +
+    '<div class="field"><span>Mục tiêu chạy</span><div class="chips">' + GOAL_ORDER.map(k => '<button class="chip" data-act="ob-dist" data-v="' + k + '" aria-pressed="' + (o.dist === k) + '">' + (k === 'fit' ? 'Khỏe lâu dài, không đua' : GOALS[k].s) + '</button>').join('') + '</div><small>Đổi lúc nào cũng được, ví dụ xong 21K thì lên 42K.</small></div>' +
+    (o.dist === 'fit' ? '<div class="field"><span>Chạy dài cuối tuần muốn giữ ở</span><div class="chips">' + FIT_LONG.map(v => '<button class="chip" data-act="ob-fit" data-v="' + v + '" aria-pressed="' + (+o.fitLong === v) + '">' + v + ' km</button>').join('') + '</div></div>' : '') +
     '<div class="field"><span>Hiện bạn chạy liền một mạch được khoảng bao xa?</span><div class="chips two-col">' + Object.keys(LEVELS).map(k => '<button class="chip" data-act="ob-level" data-v="' + k + '" aria-pressed="' + (o.level === k) + '">' + LEVELS[k].n + '</button>').join('') + '</div></div>' +
     '<div class="field"><span>Ngày chạy dài</span><div class="chips">' + dayChips('ob-long', [o.longDay], [5,6]) + '</div></div>' +
     '<div class="field"><span>Hai buổi chạy trong tuần</span><div class="chips">' + dayChips('ob-run', o.runDays, [0,1,2,3,4,5,6].filter(i => i !== o.longDay)) + '</div><small>Bận tuần nào thì đổi ngay trong lịch, app tự xếp lại.</small></div>' +
     '<label class="field"><span>Thời gian chạy 5 km gần nhất</span><input id="obFive" data-time inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3300 = 33:00" value="' + esc(o.five) + '"><small>Không bắt buộc. Gõ số liền, app tự thêm dấu “:”.</small></label>' +
-    '<label class="field"><span>Ngày đua half marathon</span><input id="obRace" type="date" min="' + addDays(todayStr(), 28) + '" value="' + esc(o.race) + '"><small>Chưa có giải thì để trống, app tự xếp ' + LEVELS[o.level].weeks + ' tuần.</small></label>' +
+    (o.dist === 'fit' ? '' : '<label class="field"><span>Ngày đua ' + GOALS[o.dist].s + '</span><input id="obRace" type="date" min="' + addDays(todayStr(), 28) + '" value="' + esc(o.race) + '"><small>Chưa có giải thì để trống, app tự xếp ' + GOALS[o.dist].weeks[o.level] + ' tuần.</small></label>') +
     '<div class="two"><label class="field"><span>Tuổi</span><input id="obAge" inputmode="numeric" pattern="[0-9]*" value="' + esc(o.age) + '"></label><label class="field"><span>Chiều cao (cm)</span><input id="obH" inputmode="numeric" pattern="[0-9]*" value="' + esc(o.h) + '"></label></div>' +
     '<div class="two"><label class="field"><span>Cân nặng (kg)</span><input id="obW" inputmode="decimal" value="' + esc(o.w) + '"></label><label class="field"><span>Vòng bụng (cm)</span><input id="obWaist" inputmode="decimal" placeholder="đo ngang rốn" value="' + esc(o.waist) + '"></label></div>' +
     '<p class="form-err" id="obErr" hidden></p><button class="btn primary block ob-go" data-act="ob-go">Lập lịch cho tôi</button></div>';
 }
 function readOb(){ const g = id => { const e = $('#' + id); return e ? e.value : ''; }; Object.assign(UI.ob, {five:g('obFive'), race:g('obRace'), w:g('obW'), waist:g('obWaist'), age:g('obAge'), h:g('obH')}); }
 Object.assign(ACT, {
+  'ob-dist': b => { readOb(); UI.ob.dist = b.dataset.v; renderOnboarding(); },
+  'ob-fit': b => { readOb(); UI.ob.fitLong = +b.dataset.v; renderOnboarding(); },
   'ob-level': b => { readOb(); UI.ob.level = b.dataset.v; renderOnboarding(); },
   'ob-long': b => { readOb(); UI.ob.longDay = +b.dataset.v; UI.ob.runDays = UI.ob.runDays.filter(x => x !== UI.ob.longDay); renderOnboarding(); },
   'ob-run': b => { readOb(); const v = +b.dataset.v, a = UI.ob.runDays; if(a.includes(v)) UI.ob.runDays = a.filter(x => x !== v); else { a.push(v); if(a.length > 2) a.shift(); } renderOnboarding(); },
@@ -5229,8 +5434,9 @@ Object.assign(ACT, {
     readOb(); const o = UI.ob, five = o.five.trim() ? parseTime(o.five) : null;
     if(o.runDays.length !== 2){ showErr('obErr', 'Chọn đúng 2 ngày chạy trong tuần.'); return; }
     if(o.five.trim() && !five){ showErr('obErr', 'Thời gian 5 km cần trong khoảng 15–60 phút. Gõ số liền: 3300 là 33:00.'); return; }
+    if(o.dist === 'fit') o.race = '';
     if(o.race && diffDays(todayStr(), o.race) < 28){ showErr('obErr', 'Ngày đua nên cách hôm nay ít nhất 4 tuần.'); return; }
-    const p = newProfile({level:o.level, fiveK:five, raceDate:o.race || null, longDay:o.longDay, runDays:o.runDays.slice().sort((a, b) => a - b), age:parseInt(o.age, 10) || null, height:parseInt(o.h, 10) || null});
+    const p = newProfile({dist:o.dist, fitLong:o.fitLong, level:o.level, fiveK:five, raceDate:o.race || null, longDay:o.longDay, runDays:o.runDays.slice().sort((a, b) => a - b), age:parseInt(o.age, 10) || null, height:parseInt(o.h, 10) || null});
     placeStart(p); S.profile = p;
     const w = parseNum(o.w), waist = parseNum(o.waist);
     if(w || waist) S.body.push(Object.assign({d:todayStr()}, w ? {w} : {}, waist ? {waist} : {}));
@@ -5243,7 +5449,7 @@ Object.assign(ACT, {
 /* ================= khởi động ================= */
 (function boot(){
   const local = loadLocal();
-  if(local && local.profile) S = normalize(local);
+  if(local && local.profile){ S = normalize(local); try{ const c0 = S.meta.compactAt; compactOld(false); if(S.meta.compactAt !== c0) saveLocal(); }catch(e){} }
   route();
   loadOwn().then(() => { if(S.profile && (UI.view === 'tam-tri' || UI.view === 'giac-ngu')) renderAll(); });
   clipsCleanup();
