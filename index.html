@@ -781,7 +781,7 @@ details.plan .bk .field:first-child{margin-top:4px}
 <script>
 'use strict';
 /* ================= Nhịp 21 v2 — core ================= */
-const APP_VER = '2.1';
+const APP_VER = '2.2';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -872,7 +872,7 @@ function newProfile(o){
     longDay:5, runDays:[1,3], focusMode:'pomo', calmSound:'pad', calmVol:0.6, voiceRate:0.95, breathVoice:true, voiceName:'', focusSound:'off',
     age:null, sex:'m', height:null, goalW:null, goal:'can-doi', eq:{db:1, bar:1, rope:1}, stepGoal:8000, sleepGoal:7.5, mindGoal:10, readGoal:20, moveGoal:30,
     focusCat:'work', customMin:40, sleepSound:'rain', sleepTimer:30, smartWin:30, clipRec:true, placement:'bed', hrMax:null, runTime:'toi', lastHealth:null,
-    sleepMix:[{k:'rain', v:0.8}, {k:'brown', v:0.35}], wakeMission:true, runMusic:'off', workMusic:'off', lastWorkMusic:'beat128', bottleMl:750, bedT:'23:00', wakeT:'06:30', dist:'21k', season:0, history:[], fitLong:10}, o || {});
+    sleepMix:[{k:'rain', v:0.8}, {k:'brown', v:0.35}], wakeMission:true, runMusic:'off', workMusic:'off', lastWorkMusic:'beat128', bottleMl:750, bedT:'23:00', wakeT:'06:30', dist:'21k', season:0, history:[], fitLong:10, phoneRun:false}, o || {});
   if(!['5k','10k','21k','42k','fit'].includes(p.dist)) p.dist = '21k';
   if(!['lt3','3-5','5-8','8-12','12-21','21+'].includes(p.level)) p.level = '3-5';
   if(!Array.isArray(p.history)) p.history = [];
@@ -1788,7 +1788,11 @@ const EFF = {
 };
 const EFFORT = {easy:'nhẹ nhàng, vẫn nói trọn câu được', tempo:'khá nặng, chỉ nói được vài từ', inter:'nhanh và mạnh, gần hết sức nhưng vẫn kiểm soát', hm:'hơi nặng nhưng đều, giữ được rất lâu'};
 function hrMax(){ const p = S.profile; if(!p) return null; if(p.hrMax) return p.hrMax; return p.age ? Math.round(208 - 0.7 * p.age) : null; }
-function zoneText(z){ const Z = ZONES[z], mx = hrMax(); return Z[0] + '–' + Z[1] + '% nhịp tim tối đa' + (mx ? ' (' + Math.round(mx * Z[0] / 100) + '–' + Math.round(mx * Z[1] / 100) + ' nhịp/phút)' : ''); }
+function zoneBpm(z){ const Z = ZONES[z], mx = hrMax(); if(!mx) return null; const rh = typeof restHr === 'function' ? restHr() : null;
+  /* có nhịp tim nghỉ (từ đồng hồ) thì dùng nhịp tim dự trữ (Karvonen), sát với từng người hơn */
+  if(rh && rh < mx - 40){ const R = mx - rh; return [Math.round(rh + R * Z[0] / 100), Math.round(rh + R * Z[1] / 100)]; }
+  return [Math.round(mx * Z[0] / 100), Math.round(mx * Z[1] / 100)]; }
+function zoneText(z){ const Z = ZONES[z], b = zoneBpm(z); return 'Vùng ' + z + (b ? ' (' + b[0] + '–' + b[1] + ' nhịp/phút)' : ' (' + Z[0] + '–' + Z[1] + '% nhịp tim tối đa)'); }
 /* dự đoán thời gian theo công thức Riegel; marathon dùng số mũ lớn hơn vì người mới thường chậm dần ở nửa sau */
 function predictT(fiveK, km){ return fiveK * Math.pow(km / 5, km > 30 ? 1.08 : 1.06); }
 function paces(fiveK, km){
@@ -2439,7 +2443,25 @@ const FACT = {rain:.55, storm:.6, ocean:.75, stream:.5, night:.5, birds:.45, fir
 function sndName(k){ if(k && k.startsWith('own:')){ const f = OWN.list.find(x => 'own:' + x.id === k); return f ? f.name : 'Nhạc của bạn'; } return (SND[k] || SND.off).n; }
 
 let AC = null;
-function ensureAudio(){ try{ if(!AC){ const C = window.AudioContext || window.webkitAudioContext; if(C) AC = new C(); } if(AC && AC.state === 'suspended') AC.resume(); }catch(e){} }
+function ensureAudio(){ try{ if(!AC){ const C = window.AudioContext || window.webkitAudioContext; if(C) AC = new C(); } if(AC && AC.state === 'suspended') AC.resume(); }catch(e){} bgEl(); }
+/* iPhone: âm thanh web bị tắt khi gạt nút im lặng. Một thẻ audio phát im lặng (được "mở khóa" trong lần chạm của bạn)
+   chuyển máy sang chế độ phát nhạc, nên âm thanh thiền/ngủ vẫn nghe được; cũng là trình phát dùng cho chế độ khóa máy. */
+let BGEL = null;
+function silentWav(){ const sr = 8000, n = sr / 2, b = new ArrayBuffer(44 + n), v = new DataView(b), w = (o, s) => { for(let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); for(let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([b], {type:'audio/wav'})); }
+function bgEl(){
+  if(BGEL) return BGEL;
+  try{ BGEL = new Audio(); BGEL.setAttribute('playsinline', ''); BGEL.loop = true; BGEL._sil = silentWav(); BGEL.src = BGEL._sil; BGEL.volume = 1;
+    const p = BGEL.play(); if(p && p.then) p.then(() => { if(!BGEL._keep) BGEL.pause(); }).catch(() => {}); }catch(e){ BGEL = {play(){ return Promise.reject(); }, pause(){}}; }
+  return BGEL;
+}
+function bgSilent(on){
+  try{ if(navigator.audioSession) navigator.audioSession.type = on ? 'playback' : 'auto'; }catch(e){}
+  const a = bgEl(); if(!a || !a._sil) return;
+  if(on){ a._keep = true; if(a.src !== a._sil && BGS && !BGS.on){ a.src = a._sil; } if(a.paused){ const p = a.play(); if(p && p.catch) p.catch(() => {}); } }
+  else { a._keep = false; if(!(typeof BGS !== 'undefined' && BGS.on)){ try{ a.pause(); if(a.src !== a._sil) a.src = a._sil; }catch(e){} } }
+}
 function beep(f, d){
   if(!S.profile || !S.profile.sound || !AC) return;
   try{ const o = AC.createOscillator(), g = AC.createGain(), n = AC.currentTime; o.type = 'sine'; o.frequency.value = f;
@@ -2513,7 +2535,7 @@ const Mix = (function(){
   return {
     play(list, v){
       ensureAudio(); if(!AC) return;
-      try{ if(navigator.audioSession) navigator.audioSession.type = 'playback'; }catch(e){}
+      bgSilent(true);
       bus(); if(v != null) vol = v; paused = false; ducked = false;
       const want = (list || []).filter(x => x && x.k && x.k !== 'off');
       layers.filter(L => !want.some(w => w.k === L.k)).forEach(L => kill(L, 1.2));
@@ -2521,7 +2543,9 @@ const Mix = (function(){
       want.forEach(w => { const ex = layers.find(L => L.k === w.k); if(ex){ ex.v = w.v == null ? 1 : w.v; [ex.g, ex.sg].forEach(x => { try{ x.gain.setTargetAtTime(Math.max(0.0002, ex.v * (FACT[w.k] || 0.7)), AC.currentTime, 0.3); }catch(e){} }); } else add(w.k, w.v); });
       ramp(2);
     },
-    stop(fade){ const f = fade == null ? 2 : fade; layers.forEach(L => kill(L, f)); layers = []; if(seqIv){ clearInterval(seqIv); seqIv = null; } },
+    stop(fade){ const f = fade == null ? 2 : fade; layers.forEach(L => kill(L, f)); layers = []; if(seqIv){ clearInterval(seqIv); seqIv = null; } if(typeof BGS === 'undefined' || !BGS.on) setTimeout(() => { if(!layers.length) bgSilent(false); }, f * 1000 + 300); },
+    tap(){ bus(); const d = AC.createMediaStreamDestination(); master.connect(d); return d; },
+    untap(d){ try{ master.disconnect(d); }catch(e){} },
     on(){ return layers.length > 0; },
     keys(){ return layers.map(L => L.k); },
     setVol(v){ vol = v; ramp(0.25); },
@@ -2740,9 +2764,10 @@ Object.keys(BIN).forEach(k => { GEN[k] = L => { const [c, b] = BIN[k], m = AC.cr
 /* ================= nhạc của bạn: nhiều file, lưu trong máy ================= */
 const OWN = {list:[]};
 const MediaDB = {
-  open(){ return new Promise((res, rej) => { if(!window.indexedDB) return rej(new Error('no idb')); const r = indexedDB.open('nhip21-media', 2); r.onupgradeneeded = () => { const db = r.result; if(!db.objectStoreNames.contains('f')) db.createObjectStore('f'); if(!db.objectStoreNames.contains('clips')) db.createObjectStore('clips'); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  open(){ return new Promise((res, rej) => { if(!window.indexedDB) return rej(new Error('no idb')); const r = indexedDB.open('nhip21-media', 3); r.onupgradeneeded = () => { const db = r.result; ['f', 'clips', 'bake'].forEach(n => { if(!db.objectStoreNames.contains(n)) db.createObjectStore(n); }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   async put(store, key, v){ const db = await this.open(); return new Promise((res, rej) => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).put(v, key); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); },
   async del(store, key){ const db = await this.open(); return new Promise(res => { const tx = db.transaction(store, 'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = () => res(); tx.onerror = () => res(); }); },
+  async get(store, key){ const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction(store).objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   async all(store){ const db = await this.open(); return new Promise((res, rej) => { const out = [], tx = db.transaction(store), r = tx.objectStore(store).openCursor(); r.onsuccess = () => { const c = r.result; if(c){ out.push([c.key, c.value]); c.continue(); } else res(out); }; r.onerror = () => rej(r.error); }); }
 };
 function loadOwn(){ return MediaDB.all('f').then(rows => { OWN.list = rows.filter(([k, v]) => v && v.blob).map(([k, v]) => ({id:String(k), name:v.name || 'Nhạc của bạn', blob:v.blob, size:v.blob.size || 0})); }).catch(() => {}); }
@@ -2826,7 +2851,7 @@ function partsHtml(parts, pc){
 }
 function runTargets(r){
   const pc = curPaces(), e = EFF[r.pk] || EFF.easy, pk = r.pk === 'long' ? 'long' : r.pk;
-  return '<div class="stat3" style="margin-top:10px"><div><b>' + (pc && pc[pk] ? paceText(pc, pk).replace(' /km', '') : '–') + '</b><span>pace /km' + (pc ? '' : ' (nhập 5K để có)') + '</span></div><div><b>Vùng ' + e.z + '</b><span>' + ZONES[e.z][0] + '–' + ZONES[e.z][1] + '% nhịp tim tối đa' + (hrMax() ? ' · ' + Math.round(hrMax() * ZONES[e.z][0] / 100) + '–' + Math.round(hrMax() * ZONES[e.z][1] / 100) : '') + '</span></div><div><b>' + e.rpe + '</b><span>cảm giác gắng sức, ' + e.talk + '</span></div></div>';
+  return '<div class="stat3" style="margin-top:10px"><div><b>' + (pc && pc[pk] ? paceText(pc, pk).replace(' /km', '') : '–') + '</b><span>pace /km' + (pc ? '' : ' (nhập 5K để có)') + '</span></div><div><b>Vùng ' + e.z + '</b><span>' + (zoneBpm(e.z) ? zoneBpm(e.z)[0] + '–' + zoneBpm(e.z)[1] + ' nhịp/phút' + (restHr() ? ' (tính theo nhịp nghỉ ' + restHr() + ')' : '') : ZONES[e.z][0] + '–' + ZONES[e.z][1] + '% nhịp tim tối đa') + '</span></div><div><b>' + e.rpe + '</b><span>cảm giác gắng sức, ' + e.talk + '</span></div></div>';
 }
 function runCardHtml(r, done, opts){
   opts = opts || {};
@@ -2836,13 +2861,22 @@ function runCardHtml(r, done, opts){
     '<h3>' + esc(r.title) + '</h3><p class="small">' + esc(r.detail) + '</p>' +
     '<p class="small muted" style="margin-top:6px">' + (est ? 'Khoảng ' + est + ' phút. ' : '') + 'Cảm giác ' + (EFF[r.pk] || EFF.easy).rpe + ', ' + (EFF[r.pk] || EFF.easy).talk + '. ' + zoneText((EFF[r.pk] || EFF.easy).z) + (curPaces() ? '. Pace ' + paceText(curPaces(), r.pk) : '') + '.</p>' +
     (r.partial ? '<p class="adapt">Buổi này bạn chạy ' + num(r1(dk)) + ' trên ' + num(r.km) + ' km. Không sao: lịch tuần sau đã tự điều chỉnh theo quãng bạn chạy được.</p>' : '') +
-    '<div class="run-act">' + (done ? OK : '<button class="btn small primary" data-act="run-start" data-key="' + r.key + '">' + ICON.playS + ' Chạy có hướng dẫn</button>' +
-      '<button class="btn small ghost" data-act="run-view" data-key="' + r.key + '">Xem cách chạy</button>' +
-      '<button class="btn small ghost" data-act="log-run" data-key="' + r.key + '">Ghi lại</button>' +
+    '<div class="run-act">' + (done ? OK : '<button class="btn small primary" data-act="log-run" data-key="' + r.key + '">' + ICON.plus + ' Ghi lại buổi chạy</button>' +
+      '<button class="btn small ghost" data-act="run-view" data-key="' + r.key + '">Cách chạy, nhịp tim</button>' +
+      (S.profile.phoneRun ? '<button class="btn small ghost" data-act="run-start" data-key="' + r.key + '">Đo bằng điện thoại</button>' : '') +
       (opts.indoor && r.type !== 'long' ? '<button class="btn small ghost" data-act="run-indoor" data-key="' + r.key + '">Trời mưa? Tập trong nhà</button>' : '')) +
     '</div></div>';
 }
 const OK = '<span class="ok">' + ICON.check + 'Đã xong</span>';
+/* chạy với đồng hồ, điện thoại khóa màn hình trong túi hoặc để ở nhà */
+function watchTipsHtml(r){
+  const z = (EFF[r.pk] || EFF.easy).z, b = zoneBpm(z), pc = curPaces(), pt = pc && pc[r.pk] ? paceText(pc, r.pk) : '';
+  return '<div class="card" style="margin-top:14px"><h3>Chạy với đồng hồ Huawei</h3><ol class="how" style="margin-top:6px">' +
+    '<li>Trên đồng hồ: <b>Tập luyện › Chạy ngoài trời</b>. GT 3 có GPS riêng, điện thoại để ở nhà hoặc khóa màn hình trong túi cũng được.</li>' +
+    (b ? '<li>Trong cài đặt bài chạy trên đồng hồ, đặt <b>giới hạn nhịp tim</b> khoảng <b>' + b[1] + '</b> (vùng ' + z + ': ' + b[0] + '–' + b[1] + '). Đồng hồ rung khi vượt, nhắc bạn chạy chậm lại.</li>' : '<li>Thêm tuổi trong Cài đặt để app tính vùng nhịp tim cho bạn đặt trên đồng hồ.</li>') +
+    (pt ? '<li>Hoặc đặt <b>nhắc nhở pace</b> quanh ' + pt + '.</li>' : '') +
+    '<li>Chạy xong: mở app Huawei Sức khỏe xem km, thời gian, nhịp tim TB, rồi bấm <b>Ghi lại</b> ở đây (khoảng 20 giây).</li></ol></div>';
+}
 function openRunView(key){
   const r = findRun(key); if(!r) return;
   const pc = curPaces();
@@ -2853,7 +2887,8 @@ function openRunView(key){
     '<li><b>Thở</b>Thở bằng cả mũi và miệng, thở ra dài. Hụt hơi nghĩa là đang nhanh quá so với buổi này.</li>' +
     (r.km >= 10 ? '<li><b>Nước và năng lượng</b>Mang nước, uống vài ngụm mỗi 20 phút. Trên 75 phút: nửa quả chuối hoặc gel mỗi 40 phút.</li>' : '<li><b>Ăn trước khi chạy</b>Chạy tối: ăn nhẹ một quả chuối hoặc hộp sữa chua trước 1–2 tiếng.</li>') +
     '<li><b>Khi nào dừng</b>Đau nhói một điểm, đau làm thay đổi dáng chạy, chóng mặt, tức ngực: dừng lại, đi bộ về.</li></ul>' +
-    '<div class="btn-col"><button class="btn primary" data-act="run-start" data-key="' + key + '">' + ICON.playS + ' Chạy có GPS và giọng HLV</button><button class="btn ghost" data-act="run-start" data-key="' + key + '" data-mode="time">Chạy máy hoặc không có GPS</button><button class="btn ghost" data-act="log-run" data-key="' + key + '">Đã chạy xong? Ghi lại</button></div>');
+    watchTipsHtml(r) +
+    '<div class="btn-col"><button class="btn primary" data-act="log-run" data-key="' + key + '">Đã chạy xong? Ghi lại</button>' + (S.profile.phoneRun ? '<button class="btn ghost" data-act="run-start" data-key="' + key + '">Đo bằng GPS điện thoại (phải mở màn hình)</button><button class="btn ghost" data-act="run-start" data-key="' + key + '" data-mode="time">Chạy máy, bấm giờ bằng điện thoại</button>' : '') + '</div>');
 }
 
 /* ===== chạy có GPS ===== */
@@ -3010,6 +3045,7 @@ function openRunLog(key, kind){
     '<label class="field"><span>Thời gian</span><input id="rlTime" data-time data-pace-for="rlPace" data-km-from="rlKm" inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3530 = 35:30"><small>Gõ số liền, app tự thêm dấu “:”.</small></label></div>' +
     '<p class="pace-out" id="rlPace"></p>' +
     '<div class="two"><label class="field"><span>Ngày</span><input id="rlDate" type="date" value="' + t + '" max="' + t + '"></label><label class="field"><span>Nhịp tim TB (nếu có)</span><input id="rlHr" inputmode="numeric" pattern="[0-9]*" placeholder="vd. 148"></label></div>' +
+    '<p class="small muted">Số liệu xem trong app Huawei Sức khỏe › Bài tập (hoặc app Sức khỏe của iPhone). Chỉ cần km và thời gian là đủ.</p>' +
     '<div class="field"><span>Cảm giác</span><div class="chips" id="rlRpe">' + [[3,'Nhẹ'],[5,'Vừa'],[7,'Khó'],[9,'Rất khó']].map(([v, n]) => '<button class="chip" data-act="toggle-one" data-v="' + v + '" aria-pressed="false">' + n + '</button>').join('') + '</div></div>' +
     '<p class="form-err" id="rlErr" hidden></p><div class="btn-col"><button class="btn primary" data-act="save-run">Lưu</button></div>');
   $('#rlKey') && $('#rlKey').addEventListener('change', e => { const r = findRun(e.target.value); if(r && !$('#rlKm').value) $('#rlKm').value = String(r.km).replace('.', ','); });
@@ -3955,13 +3991,13 @@ function nightScore(n, recent){
   const goal = (S.profile.sleepGoal || 7.5) * 60, comp = {};
   const tstH = n.tst / 60;
   comp.dur = n.tst >= goal * 0.97 ? (n.tst > 10.5 * 60 ? 30 : 35) : Math.max(0, 35 * (1 - (goal - n.tst) / 240));
-  comp.eff = n.eff >= 90 ? 15 : Math.max(0, 15 * (n.eff - 70) / 20);
-  comp.lat = n.lat <= 20 ? 10 : Math.max(0, 10 * (1 - (n.lat - 20) / 40));
-  comp.calm = clamp(15 - Math.max(0, (n.wakes || 0) - 1) * 3 - ((n.snoreMin || 0) > 30 ? 4 : 0) - (n.waso > 30 ? 3 : 0), 0, 15);
+  if(n.eff != null) comp.eff = n.eff >= 90 ? 15 : Math.max(0, 15 * (n.eff - 70) / 20);
+  if(n.lat != null) comp.lat = n.lat <= 20 ? 10 : Math.max(0, 10 * (1 - (n.lat - 20) / 40));
+  if(n.wakes != null) comp.calm = clamp(15 - Math.max(0, (n.wakes || 0) - 1) * 3 - ((n.snoreMin || 0) > 30 ? 4 : 0) - (n.waso > 30 ? 3 : 0), 0, 15);
   if(n.st && n.tst){ const dp = n.st.D / n.tst * 100, rp = n.st.R / n.tst * 100; comp.stage = clamp(7.5 - Math.max(0, 13 - dp) * 0.6 - Math.max(0, dp - 25) * 0.3, 0, 7.5) + clamp(7.5 - Math.max(0, 18 - rp) * 0.5, 0, 7.5); }
   const beds = recent.map(x => { const d = new Date(x.start); let m = d.getHours() * 60 + d.getMinutes(); if(m < 720) m += 1440; return m; });
   if(beds.length >= 3){ const s = beds.slice().sort((a, b) => a - b), med = s[Math.floor(s.length / 2)], d = new Date(n.start); let m = d.getHours() * 60 + d.getMinutes(); if(m < 720) m += 1440; comp.reg = clamp(10 * (1 - (Math.abs(m - med) - 30) / 60), 0, 10); }
-  const max = 35 + 15 + 10 + 15 + (comp.stage != null ? 15 : 0) + (comp.reg != null ? 10 : 0), got = sum(Object.values(comp));
+  const W = {dur:35, eff:15, lat:10, calm:15, stage:15, reg:10}, max = sum(Object.keys(comp), k => W[k]), got = sum(Object.values(comp));
   return {score:Math.round(got / max * 100), comp, max};
 }
 const COMPN = {dur:['Thời lượng',35], eff:['Hiệu quả',15], lat:['Vào giấc',10], calm:['Ngủ yên',15], stage:['Sâu và REM',15], reg:['Đều giờ',10]};
@@ -3995,9 +4031,10 @@ function finishNight(){
 }
 /* ===== ghi giấc ngủ bằng tay (khi không theo dõi) ===== */
 function openSleepManual(){
-  const y = addDays(todayStr(), -1);
+  const y = addDays(todayStr(), -1), g = typeof sleepGuess === 'function' ? sleepGuess() : {};
   openSheet('Ghi giấc ngủ đêm qua',
-    '<div class="two"><label class="field"><span>Lên giường lúc</span><input type="time" id="smBed" value="' + (S.profile.bedT || '23:00') + '"></label><label class="field"><span>Thức dậy lúc</span><input type="time" id="smWake" value="' + hhmm(Date.now()) + '"></label></div>' +
+    (g.src === 'app' ? '<p class="small muted">Giờ điền sẵn đoán theo lúc bạn dùng điện thoại. Sửa nếu chưa đúng.</p>' : '') +
+    '<div class="two"><label class="field"><span>Lên giường lúc</span><input type="time" id="smBed" value="' + (g.bed ? hhmm(g.bed) : g.bedT || S.profile.bedT || '23:00') + '"></label><label class="field"><span>Thức dậy lúc</span><input type="time" id="smWake" value="' + (g.wake ? hhmm(g.wake) : hhmm(Date.now())) + '"></label></div>' +
     '<div class="two"><label class="field"><span>Mất bao lâu mới ngủ (phút)</span><input id="smLat" inputmode="numeric" pattern="[0-9]*" value="15"></label><label class="field"><span>Thức giấc giữa đêm (lần)</span><input id="smWk" inputmode="numeric" pattern="[0-9]*" value="0"></label></div>' +
     '<div class="field"><span>Dậy thấy thế nào?</span><div class="chips" id="smFeel">' + [[1,'Rất mệt'],[2,'Mệt'],[3,'Bình thường'],[4,'Khỏe'],[5,'Rất khỏe']].map(([v, n]) => '<button class="chip" data-act="toggle-one" data-v="' + v + '" aria-pressed="' + (v === 3) + '">' + n + '</button>').join('') + '</div></div>' +
     '<p class="form-err" id="smErr" hidden></p><div class="btn-col"><button class="btn primary" data-act="sl-manual-save">Lưu</button></div>');
@@ -4061,10 +4098,10 @@ function nightHtml(n){
   const ev = n.cnt || {}, user = ['snore','talk','cough'].filter(k => ev[k]), env = ev.noise || 0;
   return '<section class="sleep-hero">' + starsSvg() + '<div class="sc-wrap">' + scoreRing(n) + '<div class="sc-meta">' +
     '<div><b>' + fmtHm(n.tst) + '</b><span class="muted">ngủ thật sự</span></div><div><b>' + hhmm(n.on || n.start) + '–' + hhmm(n.end) + '</b><span class="muted">ngủ – dậy</span></div>' +
-    '<div><b>' + (n.eff || 0) + '%</b><span class="muted">hiệu quả</span></div><div><b>' + (n.lat != null ? n.lat + ' ph' : '–') + '</b><span class="muted">để vào giấc</span></div></div></div>' +
-    '<p class="small muted" style="margin-top:10px;position:relative">' + fullDate(n.d) + (n.src === 'track' ? ' · đo bằng ' + [n.mic ? 'micro' : '', n.motion ? 'cảm biến chuyển động' : ''].filter(Boolean).join(' và ') : ' · ghi tay') + (n.gap ? ' · mất dữ liệu ' + n.gap + ' phút (máy bị khóa?)' : '') + '</p></section>' +
+    '<div><b>' + (n.eff != null ? n.eff + '%' : '–') + '</b><span class="muted">hiệu quả</span></div><div><b>' + (n.lat != null ? n.lat + ' ph' : '–') + '</b><span class="muted">để vào giấc</span></div></div></div>' +
+    '<p class="small muted" style="margin-top:10px;position:relative">' + fullDate(n.d) + (n.src === 'track' ? ' · đo bằng ' + [n.mic ? 'micro' : '', n.motion ? 'cảm biến chuyển động' : ''].filter(Boolean).join(' và ') : n.src === 'health' ? (n.how === 'stages' ? ' · từ đồng hồ qua app Sức khỏe' : n.how === 'inbed' ? ' · iPhone ước tính theo lúc đặt máy xuống, cầm lên' : ' · từ app Sức khỏe') : n.src === 'quick' ? ' · theo lúc dùng điện thoại' : ' · ghi tay') + (n.gap ? ' · mất dữ liệu ' + n.gap + ' phút (máy bị khóa?)' : '') + '</p></section>' +
     (n.st ? '<section class="sec"><div class="sec-h"><h2>Các giai đoạn ngủ</h2><span class="aside">Ước tính</span></div>' + stageBar(n) + '<div style="margin-top:10px">' + hypSvg(n) + '</div></section>' : '') +
-    '<section class="sec"><div class="sec-h"><h2>Điểm từng phần</h2><span class="aside">' + n.score + '/100</span></div><div class="comp">' + Object.keys(COMPN).filter(k => n.comp && n.comp[k] != null).map(k => '<div><span>' + COMPN[k][0] + '</span><div class="bar"><i style="width:' + Math.round(n.comp[k] / COMPN[k][1] * 100) + '%"></i></div><b>' + Math.round(n.comp[k]) + '/' + COMPN[k][1] + '</b></div>').join('') + '</div></section>' +
+    '<section class="sec"><div class="sec-h"><h2>Điểm từng phần</h2><span class="aside">' + n.score + '/100</span></div>' + (n.comp && Object.keys(n.comp).length < 4 ? '<p class="small muted" style="margin-bottom:8px">Điểm tạm tính theo thời lượng' + (n.comp.reg != null ? ' và độ đều giờ' : '') + '. Có số từ đồng hồ (dán từ Sức khỏe) thì chấm đủ: vào giấc, thức giấc, ngủ sâu, REM.</p>' : '') + '<div class="comp">' + Object.keys(COMPN).filter(k => n.comp && n.comp[k] != null).map(k => '<div><span>' + COMPN[k][0] + '</span><div class="bar"><i style="width:' + Math.round(n.comp[k] / COMPN[k][1] * 100) + '%"></i></div><b>' + Math.round(n.comp[k]) + '/' + COMPN[k][1] + '</b></div>').join('') + '</div></section>' +
     (n.src === 'track' ? '<section class="sec"><div class="sec-h"><h2>Âm thanh trong đêm</h2><span class="aside">Đã tách tiếng do bạn và tiếng bên ngoài</span></div><div class="list">' +
       (user.length ? user.map(k => '<div class="ev"><span class="t">' + ev[k] + ' lần</span><span>' + EVN[k] + (k === 'snore' ? (n.snoreMin ? ', khoảng ' + n.snoreMin + ' phút' : ', dưới 1 phút') : '') + '</span><span class="pill">do bạn</span></div>').join('') : '<div class="ev"><span class="t">–</span><span>Không ghi nhận ngáy, nói mơ hay ho</span><span class="pill ok">Tốt</span></div>') +
       '<div class="ev"><span class="t">' + env + ' lần</span><span>Tiếng ồn bên ngoài (xe, chó sủa, nhà bên…)</span><span class="pill">không phải bạn</span></div>' +
@@ -4084,17 +4121,19 @@ function loadClips(nightId){
 function sleepTonightHtml(){
   const wp = wakePlan(), bed = wp ? minToHHMM(wp.bed) : S.profile.bedT, wk = wp ? minToHHMM(wp.wake) : S.profile.wakeT;
   return '<section class="sec"><div class="sec-h"><h2>Đêm nay</h2><span class="aside">Đi ngủ ' + bed + ', dậy ' + wk + '</span></div><div class="card">' +
-    '<p class="small">Đặt iPhone cạnh gối hoặc trên bàn cạnh giường, cắm sạc. App nghe âm thanh và cảm nhận cử động để ước tính giấc ngủ, có báo thức lúc bạn ngủ nông.</p>' +
-    '<div class="btn-row"><button class="btn primary" data-act="sl-setup">' + ICON.moon + ' Bắt đầu theo dõi</button><button class="btn ghost" data-act="sl-manual">Ghi tay đêm qua</button></div></div></section>';
+    '<p class="small">Không cần để máy mở cả đêm. Tối chạm <b>Đi ngủ</b> rồi khóa máy; sáng mở app xác nhận giờ dậy, hoặc dán số từ đồng hồ Huawei qua app Sức khỏe.</p>' +
+    (S.meta && S.meta.bedMark && Date.now() - S.meta.bedMark < 14 * 3600000 ? '<p class="small muted" style="margin-top:6px">Đã ghi đi ngủ lúc ' + hhmm(S.meta.bedMark) + '.</p>' : '') +
+    '<div class="btn-row"><button class="btn primary" data-act="sl-bed">' + ICON.moon + ' Đi ngủ</button><button class="btn ghost" data-act="go" data-v="giac-ngu" data-s="ru-ngu">Âm thanh ngủ</button></div>' +
+    '<div class="btn-row"><button class="btn small ghost" data-act="hk-paste">Dán từ Sức khỏe</button><button class="btn small ghost" data-act="sl-manual">Ghi tay</button><button class="btn small ghost" data-act="sl-guide">Cách theo dõi tốt nhất</button></div></div></section>';
 }
 function sleepHowHtml(){
-  return '<section class="sec"><details class="plan"><summary><h2>App đo giấc ngủ thế nào?</h2><span class="aside">Nên đọc một lần</span></summary><div class="bk"><ul class="tips">' +
-    '<li><b>Cử động và âm thanh</b>Giống các app như Sleep Cycle: máy nằm trên nệm sẽ cảm nhận bạn trở mình; micro nghe tiếng động. Cứ 30 giây app tính một mức cử động. Nằm yên lâu là ngủ, trở mình nhiều là ngủ nông hoặc thức.</li>' +
-    '<li><b>Giai đoạn ngủ là ước tính</b>Ngủ sâu dồn ở nửa đầu đêm, REM nhiều ở nửa sau, mỗi chu kỳ khoảng 90 phút. App ghép mức cử động với quy luật đó. Chính xác hơn cần đồng hồ đo nhịp tim, và chính xác nhất là đo đa ký giấc ngủ trong bệnh viện.</li>' +
-    '<li><b>Tách tiếng do bạn và tiếng bên ngoài</b>Ngáy là tiếng trầm lặp lại đều theo nhịp thở; nói mơ có âm giọng nói; ho là tiếng ngắn, bật mạnh; tiếng trở mình đi kèm cử động. Tiếng ồn đều (quạt, điều hòa) được bỏ qua. Tiếng to bất chợt mà không có cử động được tính là tiếng ồn bên ngoài, không trừ điểm ngủ yên của bạn.</li>' +
-    '<li><b>Điểm ngủ</b>Tham khảo cách chấm của Fitbit và Oura: thời lượng so với mục tiêu, hiệu quả (thời gian ngủ trên thời gian nằm), thời gian vào giấc, số lần thức, tỷ lệ ngủ sâu và REM, và giờ giấc có đều không.</li>' +
-    '<li><b>Tiết kiệm pin và bộ nhớ</b>App không ghi âm cả đêm: chỉ phân tích âm lượng 4 lần mỗi giây rồi bỏ đi. Chỉ khi có tiếng động đáng chú ý mới ghi 7 giây, tối đa 10 đoạn mỗi đêm, tự xóa sau 7 ngày (tắt được). Màn hình đen tiết kiệm pin trên iPhone màn OLED. Vẫn nên cắm sạc.</li>' +
-    '<li><b>Đừng khóa máy</b>iPhone dừng app web khi khóa màn hình. App giữ màn hình mở và tự tối đi; chạm vào để sáng lại.</li></ul></div></details></section>';
+  return '<section class="sec"><details class="plan"><summary><h2>App theo dõi giấc ngủ thế nào?</h2><span class="aside">Không cần để màn sáng</span></summary><div class="bk"><ul class="tips">' +
+    '<li><b>Không giữ máy bật cả đêm</b>Để màn hình sáng cả đêm hại pin và màn hình, nên Nhịp 21 không làm vậy. App chỉ đọc kết quả mà đồng hồ hoặc iPhone đã đo sẵn, mỗi sáng một lần.</li>' +
+    '<li><b>Đồng hồ Huawei (chính xác nhất)</b>Đo nhịp tim và cử động suốt đêm, chia ngủ nông, sâu, REM. Số liệu sang app Sức khỏe của iPhone, rồi phím tắt Nhịp 21 chép vào đây.</li>' +
+    '<li><b>Chỉ iPhone</b>Bật Lịch ngủ trong app Sức khỏe: iPhone tự ghi thời gian trên giường theo lúc bạn đặt máy xuống và cầm lên. Không có giai đoạn ngủ, nhưng đủ để biết giờ ngủ, giờ dậy và xu hướng.</li>' +
+    '<li><b>Không cài gì</b>Chạm Đi ngủ trước khi ngủ; sáng mở app, app đoán giờ dậy theo lúc bạn dùng lại điện thoại. Bạn chỉ cần bấm xác nhận.</li>' +
+    '<li><b>Điểm ngủ</b>Tham khảo cách chấm của Fitbit và Oura: thời lượng so với mục tiêu, giờ giấc có đều không, và nếu có số từ đồng hồ thì thêm hiệu quả, số lần thức, tỷ lệ ngủ sâu và REM. Thiếu phần nào app chấm trên phần còn lại.</li>' +
+    '<li><b>Âm thanh ngủ khi khóa máy</b>Lần đầu với một tổ hợp âm, app thu 2 phút rồi phát vòng lặp bằng trình phát nhạc của iPhone, khóa máy vẫn kêu. Hoặc dùng Âm thanh nền có sẵn của iPhone (Cài đặt › Trợ năng › Âm thanh/Hình ảnh).</li></ul></div></details></section>';
 }
 function sleepSoundsHtml(){
   const mix = S.profile.sleepMix || [{k:'rain', v:0.8}];
@@ -4119,11 +4158,11 @@ function wakeHtml(){
     a += '<section class="sleep-hero">' + starsSvg() + '<div style="position:relative"><p class="muted small">Chương trình dậy sớm · mục tiêu ' + minToHHMM(wp.target) + '</p>' +
       '<div class="wk-line" style="margin-top:10px"><div><b>' + minToHHMM(wp.wind) + '</b><span>bắt đầu thư giãn</span></div><div><b>' + minToHHMM(wp.bed) + '</b><span>lên giường</span></div><div><b>' + minToHHMM(wp.wake) + '</b><span>dậy sáng mai</span></div></div>' +
       '<p class="small" style="margin-top:12px">' + (wp.done ? 'Bạn đã tới giờ mục tiêu. Giữ đều cả cuối tuần.' : 'Mỗi ' + wp.every + ' ngày dậy sớm hơn ' + wp.step + ' phút. Còn khoảng ' + wp.daysLeft + ' ngày tới ' + minToHHMM(wp.target) + '.') + ' Chuỗi dậy đúng giờ: <b>' + st + ' ngày</b>.</p>' +
-      '<div class="btn-row"><button class="btn primary" data-act="sl-setup">Đặt báo thức ' + minToHHMM(wp.wake) + '</button><button class="btn ghost" data-act="wake-edit">Sửa kế hoạch</button></div></div></section>';
+      '<div class="btn-row"><button class="btn primary" data-act="alarm-guide">Đặt báo thức iPhone ' + minToHHMM(wp.wake) + '</button><button class="btn ghost" data-act="wake-edit">Sửa kế hoạch</button></div></div></section>';
     const t = todayStr(), log = (w.log || {})[t];
     a += '<section class="sec"><div class="sec-h"><h2>Sáng nay bạn dậy lúc mấy giờ?</h2><span class="aside">Mục tiêu hôm nay ' + minToHHMM(wakePlanFor(t)) + '</span></div><div class="inline-form"><input type="time" id="wkLog" value="' + (log || hhmm(Date.now())) + '"><button class="btn small primary" data-act="wake-log">Lưu</button></div>' + (log ? '<p class="small muted">Đã ghi ' + log + (tmin(log) <= wakePlanFor(t) + 10 ? '. Đúng giờ, tuyệt!' : '. Trễ một chút; nếu trễ 2 ngày liền, app giữ nguyên mức giờ hiện tại thay vì dời tiếp.') + '</p>' : '') + '</section>';
   } else {
-    a += '<section class="card"><h3>Dậy sớm mà không mệt</h3><p class="small" style="margin-top:6px">Dời giờ dậy từ từ, mỗi lần 15 phút, và đi ngủ sớm lên tương ứng để vẫn đủ giấc. Báo thức trong app kêu lúc bạn ngủ nông; muốn tắt phải đứng dậy đi 20 bước để không tắt rồi ngủ tiếp.</p>' +
+    a += '<section class="card"><h3>Dậy sớm mà không mệt</h3><p class="small" style="margin-top:6px">Dời giờ dậy từ từ, mỗi lần 15 phút, và đi ngủ sớm lên tương ứng để vẫn đủ giấc. Báo thức dùng của iPhone (kêu cả khi khóa máy), đặt điện thoại xa giường để phải đứng dậy mới tắt được.</p>' +
       '<div class="two"><label class="field"><span>Hiện bạn hay dậy lúc</span><input type="time" id="wkCur" value="' + (S.profile.wakeT || '07:00') + '"></label><label class="field"><span>Muốn dậy lúc</span><input type="time" id="wkTg" value="05:45"></label></div>' +
       '<div class="field"><span>Dời mỗi lần</span><div class="chips" id="wkStep">' + [[10,'10 phút'],[15,'15 phút'],[20,'20 phút']].map(([v, l]) => '<button class="chip" data-act="toggle-one" data-v="' + v + '" aria-pressed="' + (v === 15) + '">' + l + '</button>').join('') + '</div></div>' +
       '<div class="field"><span>Sau mỗi</span><div class="chips" id="wkEvery">' + [[2,'2 ngày'],[3,'3 ngày'],[4,'4 ngày']].map(([v, l]) => '<button class="chip" data-act="toggle-one" data-v="' + v + '" aria-pressed="' + (v === 3) + '">' + l + '</button>').join('') + '</div></div>' +
@@ -4132,12 +4171,12 @@ function wakeHtml(){
   const base = tmin(wp ? minToHHMM(wp.wake) : (S.profile.wakeT || '06:30'));
   a += '<section class="sec"><div class="sec-h"><h2>Tính giờ ngủ theo chu kỳ</h2><span class="aside">Mỗi chu kỳ khoảng 90 phút, cộng 15 phút để chìm vào giấc</span></div><div class="card">' +
     '<div class="inline-form" style="margin-top:0"><label class="small" style="align-self:center">Muốn dậy lúc</label><input type="time" id="cyWake" value="' + minToHHMM(base) + '" style="max-width:150px"></div><div id="cyOut">' + cyclesHtml(base) + '</div>' +
-    '<p class="small muted" style="margin-top:8px">Vì sao: dậy giữa lúc ngủ sâu thì lờ đờ, dậy cuối chu kỳ dễ hơn. Nhưng chu kỳ mỗi người dài 70–120 phút, nên quan trọng nhất vẫn là ngủ đủ (5 chu kỳ ≈ 7,5 tiếng) và giờ dậy cố định. Báo thức pha nông trong app bù phần lệch đó.</p>' +
+    '<p class="small muted" style="margin-top:8px">Vì sao: dậy giữa lúc ngủ sâu thì lờ đờ, dậy cuối chu kỳ dễ hơn. Nhưng chu kỳ mỗi người dài 70–120 phút, nên quan trọng nhất vẫn là ngủ đủ (5 chu kỳ ≈ 7,5 tiếng) và giờ dậy cố định. Đồng hồ Huawei có báo thức thông minh (gọi dậy lúc ngủ nông) nếu bạn đeo khi ngủ.</p>' +
     '<div class="btn-row"><button class="btn small ghost" data-act="cy-now">Nếu đi ngủ ngay bây giờ?</button></div><p id="cyNow" class="small" style="margin-top:6px"></p></div></section>';
   let b = '<section class="sec first"><div class="sec-h"><h2>5 phút tỉnh táo buổi sáng</h2></div><div class="card"><p class="small">Lờ đờ 15–30 phút đầu sau khi dậy là bình thường. Cách hết nhanh nhất: uống một cốc nước, ra chỗ sáng hoặc mở rèm, vận động nhẹ.</p><div class="btn-row"><button class="btn primary" data-act="morning-go">' + ICON.playS + ' Bài vận động buổi sáng 3 phút</button></div></div></section>';
   b += '<section class="sec"><div class="sec-h"><h2>Chống tắt báo thức rồi ngủ tiếp</h2></div><ul class="tips">' +
-    '<li><b>Đi bộ để tắt</b>Khi theo dõi giấc ngủ, báo thức trong app chỉ tắt khi bạn cầm máy đi 20 bước. Chỉ được báo lại một lần, sau 5 phút.</li>' +
-    '<li><b>Báo thức dự phòng để xa giường</b>Đặt thêm báo thức trong app Đồng hồ của iPhone 5 phút sau, để điện thoại cũ hoặc đồng hồ ở góc phòng.</li>' +
+    '<li><b>Điện thoại xa giường</b>Để iPhone trên bàn hoặc góc phòng: phải đứng dậy mới tắt được. Đồng hồ Huawei rung trên tay làm báo thức thứ nhất, iPhone xa giường là báo thức thứ hai sau 5 phút.</li>' +
+    '<li><b>Tắt xong là tỉnh</b>Phím tắt › Tự động hóa › Báo thức bị dừng: tự bật độ sáng 100%, hiện lời nhắc uống nước, mở rèm. <button class="linkish small" data-act="alarm-guide">Cách làm</button></li>' +
     '<li><b>Đừng cố dậy khi ngủ thiếu</b>Cố dậy sớm mà vẫn thức khuya chỉ làm bạn kiệt sức rồi bỏ cuộc. Dời giờ đi ngủ trước, giờ dậy sẽ theo.</li>' +
     '<li><b>Ánh sáng là công tắc</b>10 phút ánh sáng ngoài trời buổi sáng giúp đồng hồ sinh học dịch sớm hơn; tối thì tắt bớt đèn, tránh màn hình sáng.</li>' +
     '<li><b>Chưa cần chạy sáng ngay</b>Hai tuần đầu chỉ cần dậy và đi bộ 10 phút. Các buổi chạy vẫn để buổi tối. Khi giờ dậy ổn định mới chuyển một buổi chạy sang sáng.</li>' +
@@ -4146,9 +4185,22 @@ function wakeHtml(){
   return cols(a, b);
 }
 function cyclesHtml(w){ return '<div class="stat3" style="margin-top:8px">' + cyclesFor(w).map(x => '<div><b>' + minToHHMM(x.bed) + '</b><span>' + x.c + ' chu kỳ · ngủ ' + num(x.h) + ' tiếng' + (x.c === 5 ? ' (nên chọn)' : x.c === 4 ? ' (chỉ khi bất đắc dĩ)' : '') + '</span></div>').join('') + '</div>'; }
+/* lời khuyên theo xu hướng 7 ngày */
+function sleepAdviceHtml(L, avg, debt, sdb, bm, wm){
+  if(L.length < 3) return '';
+  const goal = (S.profile.sleepGoal || 7.5) * 60, tips = [];
+  if(avg < goal - 30) tips.push(['Ngủ thiếu đều đặn', 'Trung bình ' + fmtHm(avg) + ', thiếu khoảng ' + fmtHm(goal - avg) + ' mỗi đêm. Lên giường sớm hơn 20–30 phút trong 1 tuần, giữ nguyên giờ dậy.']);
+  if(sdb > 60) tips.push(['Giờ ngủ thất thường', 'Giờ ngủ lệch ±' + Math.round(sdb) + ' phút. Đều giờ quan trọng ngang ngủ đủ: chọn một giờ lên giường cố định, kể cả cuối tuần (lệch không quá 1 tiếng).']);
+  const late = bm.filter(m => m > 24 * 60 + 30).length; if(late >= 3) tips.push(['Hay ngủ sau 0 giờ 30', late + '/7 đêm. Đặt nhắc thư giãn lúc 22 giờ 15 trong Phím tắt, sạc điện thoại ngoài phòng ngủ.']);
+  const feel = L.filter(n => n.feel), tired = feel.filter(n => n.feel <= 2);
+  if(feel.length >= 3 && tired.length / feel.length >= 0.5) tips.push(['Dậy vẫn mệt', 'Hơn nửa số sáng thấy mệt. Thử tránh cà phê sau 14 giờ, ăn tối trước ngủ 3 tiếng, phòng tối và mát 26 độ. Ngáy to hoặc ngủ đủ mà vẫn mệt kéo dài thì nên đi khám.']);
+  const rh = readiness(); if(rh && rh.lvl !== 'ok') tips.push(['Cơ thể chưa hồi phục', rh.txt]);
+  if(!tips.length) tips.push(['Tuần ngủ tốt', 'Đủ giấc và đều giờ. Giữ nếp này, đặc biệt giờ dậy cố định.']);
+  return '<section class="sec"><div class="sec-h"><h2>Lời khuyên tuần này</h2></div><ul class="tips">' + tips.map(([a, b]) => '<li><b>' + a + '</b>' + esc(b) + '</li>').join('') + '</ul></section>';
+}
 function trendHtml(){
   const N = S.sleep.slice(-14);
-  if(!N.length) return '<p class="empty">Chưa có đêm nào. Theo dõi hoặc ghi tay vài đêm để thấy xu hướng.</p>';
+  if(!N.length) return cols('<p class="empty">Chưa có đêm nào. Mỗi sáng xác nhận giờ ngủ hoặc dán số từ app Sức khỏe, vài đêm là thấy xu hướng.</p>', hrTrendHtml());
   const days = []; for(let i = 13; i >= 0; i--) days.push(addDays(todayStr(), -i));
   const by = d => S.sleep.filter(x => x.d === d).slice(-1)[0];
   const sc = days.map(d => (by(d) || {}).score || 0), hrs = days.map(d => r1(((by(d) || {}).tst || 0) / 60));
@@ -4162,6 +4214,7 @@ function trendHtml(){
     '<div class="stat3" style="margin-top:10px"><div><b>' + fmtHm(debt) + '</b><span>nợ ngủ 7 ngày</span></div><div><b>±' + Math.round(sd(bm)) + ' ph</b><span>độ lệch giờ ngủ</span></div><div><b>' + (last7.length ? Math.round(sum(last7, x => x.score || 0) / last7.length) : '–') + '</b><span>điểm trung bình</span></div></div></section>';
   const ex = new Set(S.logs.map(l => l.d)), A = S.sleep.filter(x => ex.has(addDays(x.d, -1))), B = S.sleep.filter(x => !ex.has(addDays(x.d, -1)));
   if(A.length >= 3 && B.length >= 3) b += '<p class="note small sec">Đêm sau ngày có tập: điểm ngủ trung bình ' + Math.round(sum(A, x => x.score) / A.length) + '; đêm sau ngày không tập: ' + Math.round(sum(B, x => x.score) / B.length) + '.</p>';
+  b += sleepAdviceHtml(last7, avg, debt, sd(bm), bm, wm) + hrTrendHtml();
   b += '<section class="sec"><div class="sec-h"><h2>Nhật ký các đêm</h2></div><div class="list">' + S.sleep.slice(-10).reverse().map(n => '<div class="item"><div><h3>' + viDate(n.d) + ' · ' + n.score + ' điểm</h3><p>' + fmtHm(n.tst) + ' ngủ, ' + hhmm(n.on || n.start) + '–' + hhmm(n.end) + (n.feel ? ', dậy thấy ' + ['','rất mệt','mệt','bình thường','khỏe','rất khỏe'][n.feel] : '') + '</p></div><button class="btn small ghost" data-act="sl-open" data-id="' + n.id + '">Xem</button></div>').join('') + '</div></section>';
   return cols(a, b);
 }
@@ -4170,7 +4223,7 @@ RENDER['giac-ngu'] = function(){
   let h = segHtml('giac-ngu');
   if(seg === 'dem-qua'){
     const n = UI.sleepId ? S.sleep.find(x => x.id === UI.sleepId) : lastNight();
-    h += '<div style="margin-top:14px"></div>' + cols((n ? nightHtml(n) : '<section class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h2 style="font-family:var(--font-d);font-size:2rem">Chưa có dữ liệu đêm qua</h2><p class="small muted" style="margin-top:6px">Tối nay bật theo dõi trước khi ngủ, hoặc ghi tay giờ ngủ đêm qua.</p></div></section>'), sleepTonightHtml() + sleepHowHtml());
+    h += '<div style="margin-top:14px"></div>' + cols((n ? nightHtml(n) : '<section class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h2 style="font-family:var(--font-d);font-size:2rem">Chưa có dữ liệu đêm qua</h2><p class="small muted" style="margin-top:6px">Xác nhận giờ ngủ bên dưới, hoặc dán số từ đồng hồ qua app Sức khỏe.</p></div></section>'), morningCardHtml() + sleepTonightHtml() + sleepHowHtml());
     el.innerHTML = h; if(n && n.src === 'track') loadClips(n.id); return;
   }
   if(seg === 'ru-ngu') h += '<div style="margin-top:6px"></div>' + cols(sleepListHtml(), sleepSoundsHtml());
@@ -4213,8 +4266,8 @@ Object.assign(ACT, {
     const tib = Math.round((end - start) / 60000); if(tib < 60 || tib > 16 * 60){ showErr('smErr', 'Thời gian nằm trên giường có vẻ chưa đúng.'); return; }
     const tst = Math.max(30, tib - lat - wakes * 10), n = {id:uid(), d:ymd(end), start:start.getTime(), end:end.getTime(), on:start.getTime() + lat * 60000, src:'manual', tib, tst, lat, wakes, waso:wakes * 10, eff:Math.round(tst / tib * 100), feel: fe ? +fe.dataset.v : null, t:Date.now()};
     Object.assign(n, nightScore(n, S.sleep.filter(x => x.end > n.end - 8 * DAY)));
-    S.sleep = S.sleep.filter(x => x.d !== n.d || x.src !== 'manual'); S.sleep.push(n); S.sleep.sort((a, b) => a.end - b.end);
-    if(S.wake && S.wake.on){ S.wake.log = S.wake.log || {}; S.wake.log[n.d] = hhmm(n.end); }
+    S.sleep = S.sleep.filter(x => x.d !== n.d || (x.src !== 'manual' && x.src !== 'quick')); S.sleep.push(n); S.sleep.sort((a, b) => a.end - b.end);
+    if(S.wake && S.wake.on){ S.wake.log = S.wake.log || {}; S.wake.log[n.d] = hhmm(n.end); } if(S.meta) delete S.meta.bedMark;
     persist(); closeSheet(); UI.sleepId = null; go('giac-ngu', 'dem-qua'); toast('Đã lưu. Điểm ngủ ' + n.score + '.');
   },
   'sl-feel': b => { const n = S.sleep.find(x => x.id === b.dataset.id); if(n){ n.feel = +b.dataset.v; persist(); } b.parentNode.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === b))); },
@@ -4227,7 +4280,7 @@ Object.assign(ACT, {
   'mix-pick': b => { const i = +b.dataset.i, m = S.profile.sleepMix; openSheet('Chọn âm thanh', sndGroupsHtml('mix-set', m[i].k, ['nature','noise','calm','piano','bin','own'], ' data-i="' + i + '"') + '<div class="btn-row sec">' + (m.length > 1 ? '<button class="btn small danger" data-act="mix-rm" data-i="' + i + '">Bỏ âm này</button>' : '') + '</div>'); },
   'mix-set': b => { S.profile.sleepMix[+b.dataset.i].k = b.dataset.v; persist(); closeSheet(); renderAll(); },
   'mix-rm': b => { S.profile.sleepMix.splice(+b.dataset.i, 1); persist(); closeSheet(); renderAll(); },
-  'mix-play': b => { const mix = (S.profile.sleepMix || [{k:'rain', v:0.8}]).map(x => Object.assign({}, x)); startSound(mix[0].k, +b.dataset.m, mix); },
+  'mix-play': b => { const mix = (S.profile.sleepMix || [{k:'rain', v:0.8}]).map(x => Object.assign({}, x)); bgSleepStart(mix, +b.dataset.m, 'Âm thanh tự trộn'); },
   'snd-try': b => previewSound(b.dataset.v, b),
   'wake-start': () => {
     const cur = $('#wkCur').value, tg = $('#wkTg').value, step = +(($('#wkStep .chip[aria-pressed="true"]') || {dataset:{v:15}}).dataset.v), every = +(($('#wkEvery .chip[aria-pressed="true"]') || {dataset:{v:3}}).dataset.v);
@@ -4636,7 +4689,7 @@ function todayPlanHtml(){
   let h = '<section class="sec"><div class="sec-h"><h2>Hôm nay tập gì</h2><button class="linkish small" data-act="open-day" data-d="' + t + '">Dời, đổi ngày</button></div><div class="stack">' +
     day.items.map(it => it.kind === 'run' ? runCardHtml(it.run, isDone(it), {indoor:true}) : it.kind === 'rest' ? '<p class="note">' + (it.busy ? 'Hôm nay bạn đánh dấu bận. Còn sức thì vài lần vận động giữa giờ là đủ.' : 'Hôm nay nghỉ theo lịch. Cơ bắp lớn lên trong lúc nghỉ. Còn sức thì đi bộ nhẹ.') + '</p>' : it.kind === 'log' ? '<div class="run is-done"><div class="run-top"><span class="tag t-extra">Ngoài lịch</span><span class="run-km big">' + (it.log.km ? num(r1(it.log.km)) + ' km' : (it.log.min || 0) + ' phút') + '</span></div><h3>' + esc(it.log.title) + '</h3><div class="run-act">' + OK + '</div></div>' : workCardHtml(it)).join('') +
     sc.wk.notes.map(n => '<p class="adapt">' + esc(n) + '</p>').join('') +
-    '<div class="btn-row"><button class="btn ghost" data-act="log-run">' + ICON.plus + ' Ghi hoạt động ngoài lịch</button><button class="btn ghost" data-act="run-free">' + ICON.run + ' Chạy tự do có GPS</button></div></div></section>';
+    '<div class="btn-row"><button class="btn ghost" data-act="log-run">' + ICON.plus + ' Ghi hoạt động ngoài lịch</button>' + (S.profile.phoneRun ? '<button class="btn ghost" data-act="run-free">' + ICON.run + ' Đo bằng GPS</button>' : '') + '</div></div></section>';
   const owe = owedItems();
   if(owe.length) h += '<section class="sec"><div class="sec-h"><h2>Làm bù trong tuần</h2><span class="aside">Ngày nào làm cũng tính</span></div><div class="list pad">' + owe.map(([dd, it]) => slotHtml(it)).join('') + '</div></section>';
   return h;
@@ -4657,12 +4710,14 @@ function todayMindHtml(){
 function eveningHtml(){
   const hr = new Date().getHours(); if(hr < 20 && hr > 3) return '';
   const wp = wakePlan();
-  return '<section class="sec"><div class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h3 style="font-size:1.1rem">Chuẩn bị ngủ</h3><p class="small muted" style="margin-top:4px">' + (wp ? 'Lên giường lúc ' + minToHHMM(wp.bed) + ' để dậy ' + minToHHMM(wp.wake) + ' mà vẫn đủ giấc.' : 'Tắt màn hình 30 phút trước khi ngủ, phòng tối và mát.') + '</p><div class="btn-row"><button class="btn primary" data-act="sl-setup">' + ICON.moon + ' Theo dõi giấc ngủ</button><button class="btn ghost" data-act="go" data-v="giac-ngu" data-s="ru-ngu">Âm thanh, truyện ngủ</button></div></div></div></section>';
+  return '<section class="sec"><div class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h3 style="font-size:1.1rem">Chuẩn bị ngủ</h3><p class="small muted" style="margin-top:4px">' + (wp ? 'Lên giường lúc ' + minToHHMM(wp.bed) + ' để dậy ' + minToHHMM(wp.wake) + ' mà vẫn đủ giấc.' : 'Tắt màn hình 30 phút trước khi ngủ, phòng tối và mát.') + '</p><div class="btn-row"><button class="btn primary" data-act="sl-bed">' + ICON.moon + ' Đi ngủ</button><button class="btn ghost" data-act="go" data-v="giac-ngu" data-s="ru-ngu">Âm thanh, truyện ngủ</button></div></div></div></section>';
 }
 function healthCardHtml(){
-  const h = healthToday(), p = S.profile;
-  if(h && h.steps) return '<section class="sec"><div class="card"><div class="row between"><div><p class="hk-steps">' + int(h.steps) + '</p><p class="small muted">bước hôm nay' + (h.km ? ' · ' + num(r1(h.km)) + ' km' : '') + ' · mục tiêu ' + int(p.stepGoal) + '</p></div><button class="btn small ghost" data-act="hk-paste">Cập nhật</button></div><div class="bar" style="margin-top:8px"><i style="width:' + Math.min(100, h.steps / p.stepGoal * 100) + '%;background:var(--focus)"></i></div></div></section>';
-  return '<section class="sec"><div class="card"><h3>Bước chân từ app Sức khỏe</h3><p class="small" style="margin-top:4px">' + (p.lastHealth ? 'Chạy Phím tắt “Nhịp 21 Sức khỏe” rồi bấm Dán.' : 'Làm một Phím tắt iPhone một lần, sau đó mỗi ngày chạm 2 lần là có số bước.') + '</p><div class="btn-row"><button class="btn small primary" data-act="hk-paste">Dán dữ liệu Sức khỏe</button><button class="btn small ghost" data-act="hk-guide">Cách làm Phím tắt</button></div></div></section>';
+  const h = healthToday() || {}, p = S.profile, rh = h.rhr || (S.health[addDays(todayStr(), -1)] || {}).rhr;
+  if(h.steps || rh) return '<section class="sec"><div class="card"><div class="row between"><div>' + (h.steps ? '<p class="hk-steps">' + int(h.steps) + '</p><p class="small muted">bước hôm nay' + (h.km ? ' · ' + num(r1(h.km)) + ' km' : '') + ' · mục tiêu ' + int(p.stepGoal) + '</p>' : '<p class="small muted">Chưa có số bước hôm nay</p>') +
+    (rh ? '<p class="small" style="margin-top:6px">Nhịp tim nghỉ <b>' + rh + '</b>' + (h.hrv ? ' · HRV <b>' + h.hrv + '</b>' : '') + '</p>' : '') + '</div><button class="btn small ghost" data-act="hk-paste">Cập nhật</button></div>' +
+    (h.steps ? '<div class="bar" style="margin-top:8px"><i style="width:' + Math.min(100, h.steps / p.stepGoal * 100) + '%;background:var(--focus)"></i></div>' : '') + '</div></section>';
+  return '<section class="sec"><div class="card"><h3>Bước chân, nhịp tim, giấc ngủ</h3><p class="small" style="margin-top:4px">' + (p.lastHealth ? 'Chạy Phím tắt “Nhịp 21” rồi bấm Dán.' : 'Lấy từ đồng hồ Huawei qua app Sức khỏe của iPhone: làm một Phím tắt một lần, sau đó mỗi sáng chạm 2 lần. Không chạy ngầm, không tốn pin.') + '</p><div class="btn-row"><button class="btn small primary" data-act="hk-paste">Dán từ Sức khỏe</button><button class="btn small ghost" data-act="hk-guide">Cách làm Phím tắt</button></div></div></section>';
 }
 function weekMetersHtml(){
   const r = weekRange(), sc = weekSchedule(r[0]), dk = doneKeys(), p = S.profile;
@@ -4679,7 +4734,7 @@ RENDER['hom-nay'] = function(){
   if(!p.age || !p.height) a += '<p class="sec note small">Thêm tuổi và chiều cao để app tính vùng nhịp tim khi chạy và lượng ăn mỗi ngày. <button class="linkish small" data-act="settings">Hoàn thiện hồ sơ</button></p>';
   if(!S.logs.some(l => l.d === y) && !S.logs.some(l => l.d === t) && p.created < y)
     a += '<div class="sec note gold"><b>Hôm qua nghỉ rồi, hôm nay đừng nghỉ tiếp.</b> Không bỏ lỡ hai ngày liền là đủ để giữ thói quen. Chỉ cần 2 phút. <div class="btn-row"><button class="btn small gold" data-act="quick2">Tập 2 phút ngay</button></div></div>';
-  a += todayPlanHtml() + todayTodoHtml();
+  a += morningCardHtml() + readinessHtml() + todayPlanHtml() + todayTodoHtml();
   let b = eveningHtml() + '<section class="sec first">' + waterCardHtml(t, true) + '</section>' + todayFoodMini() + todayMindHtml() + healthCardHtml() + weekMetersHtml() + backupNudgeHtml();
   el.innerHTML = cols(a, b);
 };
@@ -4763,10 +4818,11 @@ function runSegHtml(){
   if(P.warn) a += '<p class="sec note warn">Marathon từ mức hiện tại cần lộ trình dài (' + P.N + ' tuần). Nhiều HLV khuyên chạy xong 21K trước rồi mới lên 42K: ít chấn thương hơn và vui hơn.</p>';
   if(P.short) a += '<p class="sec note warn">Thời gian tới ngày đua hơi gấp so với mức hiện tại. Ưu tiên về đích an toàn: chạy dài thật chậm, đừng ép tốc độ.</p>';
   a += '<section class="sec"><div class="sec-h"><h2>Buổi chạy tuần này</h2><span class="aside">' + wk.runs.filter(r => dk.has(r.key)).length + ' trên ' + wk.runs.length + ', ngày nào cũng được</span></div>' + wk.notes.map(n => '<p class="adapt" style="margin-bottom:8px">' + esc(n) + '</p>').join('') + '<div class="stack">' + wk.runs.map(r => runCardHtml(r, dk.has(r.key), {indoor:true})).join('') + '</div></section>';
-  a += '<section class="sec"><div class="card"><h3>Chạy hoặc đi bộ ngoài lịch</h3><p class="small" style="margin-top:4px">Rảnh là chạy. App bấm giờ, đo quãng đường bằng GPS, đọc pace mỗi km, rồi cộng vào khối lượng tuần.</p><div class="btn-row"><button class="btn small primary" data-act="run-free">' + ICON.run + ' Chạy tự do</button><button class="btn small ghost" data-act="run-free" data-kind="walk">Đi bộ</button><button class="btn small ghost" data-act="log-run">Ghi tay</button></div></div></section>';
+  a += readinessHtml();
+  a += '<section class="sec"><div class="card"><h3>Chạy hoặc đi bộ ngoài lịch</h3><p class="small" style="margin-top:4px">Rảnh là chạy. Đo bằng đồng hồ Huawei, chạy xong ghi km và thời gian vào đây (20 giây): app cộng vào khối lượng tuần và tự điều chỉnh lịch.</p><div class="btn-row"><button class="btn small primary" data-act="log-run">' + ICON.plus + ' Ghi buổi chạy</button><button class="btn small ghost" data-act="log-run" data-kind="walk">Ghi đi bộ</button>' + (S.profile.phoneRun ? '<button class="btn small ghost" data-act="run-free">Đo bằng GPS điện thoại</button>' : '') + '</div></div></section>';
   let b = '<section class="sec first"><div class="sec-h"><h2>Pace và nhịp tim của bạn</h2></div><div class="card">' +
     '<div class="inline-form" style="margin-top:0"><label class="small" style="align-self:center;white-space:nowrap">5 km hết sức</label><input id="fiveIn" data-time inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3230 = 32:30" value="' + (p.fiveK ? fmtPace(p.fiveK) : '') + '"><button class="btn small primary" data-act="set-5k">Lưu</button></div>' +
-    '<p class="hint">' + (ef ? (ef.src === 'nhập' ? 'Theo thời gian 5 km bạn nhập.' : 'Chưa nhập 5K: đang ước tính từ buổi chạy tốt nhất 60 ngày qua (' + fmtDur(ef.sec) + ').') : 'Chưa có: nhập thời gian 5 km gần nhất, gõ số liền, app tự thêm dấu “:”.') + (hrMax() ? ' Nhịp tim tối đa ước tính ' + hrMax() + ' (theo tuổi).' : ' Thêm tuổi trong Cài đặt để có số nhịp tim.') + '</p>' +
+    '<p class="hint">' + (ef ? (ef.src === 'nhập' ? 'Theo thời gian 5 km bạn nhập.' : 'Chưa nhập 5K: đang ước tính từ buổi chạy tốt nhất 60 ngày qua (' + fmtDur(ef.sec) + ').') : 'Chưa có: nhập thời gian 5 km gần nhất, gõ số liền, app tự thêm dấu “:”.') + (hrMax() ? ' Nhịp tim tối đa ' + hrMax() + (S.profile.hrMax ? '' : ' (ước tính theo tuổi)') + (restHr() ? ', nhịp nghỉ ' + restHr() + ' từ đồng hồ: vùng tim tính theo nhịp tim dự trữ, sát với bạn hơn.' : '. Có nhịp tim nghỉ từ đồng hồ thì vùng tim sẽ sát hơn.') : ' Thêm tuổi trong Cài đặt để có số nhịp tim.') + '</p>' +
     '<dl class="zones" style="margin-top:10px"><div><dt>Chạy dễ, chạy dài</dt><dd>' + (pc ? '<b>' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + '</b> /km · ' : '') + zoneText(2) + '</dd></div><div><dt>Pace đua ' + (G.km ? G.n : '10 km') + '</dt><dd>' + (pc ? '<b>' + fmtPace(pc.hm) + '</b> /km · ' : '') + zoneText(3) + '</dd></div><div><dt>Tempo, fartlek</dt><dd>' + (pc ? '<b>' + fmtPace(pc.tempo) + '</b> /km · ' : '') + zoneText(4) + '</dd></div><div><dt>Biến tốc, chạy dốc</dt><dd>' + (pc ? '<b>' + fmtPace(pc.inter) + '</b> /km · ' : '') + zoneText(5) + '</dd></div></dl>' +
     '<p class="small muted" style="margin-top:8px">Khoảng 80% thời gian chạy nên ở vùng 2: chậm tới mức nói trọn câu được. Đây là vùng xây sức bền và đốt mỡ tốt nhất. Trời nóng ẩm thì chậm hơn 10–20 giây mỗi km là bình thường.</p></div></section>';
   const runs = S.logs.filter(l => l.kind === 'run' || l.kind === 'walk').slice(-10).reverse();
@@ -5188,6 +5244,243 @@ function backupNudgeHtml(){
 }
 Object.assign(ACT, { 'bk-later': () => { UI.bkHide = true; S.meta = S.meta || {}; S.meta.bkSnooze = Date.now(); persist(); renderAll(); } });
 
+/* ================= Sức khỏe không cần giữ màn hình: giấc ngủ, nhịp tim, buổi chạy từ iPhone + đồng hồ Huawei ================= */
+
+/* ----- 1. dấu thời gian dùng app (để đoán giờ ngủ, giờ dậy). Chỉ giữ 3 ngày, vài trăm byte ----- */
+const ACT_KEY = 'nhip21-act';
+function actMarks(){ try{ const a = JSON.parse(localStorage.getItem(ACT_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+function actMark(force){
+  const now = Date.now(), a = actMarks(), last = a[a.length - 1] || 0;
+  if(!force && now - last < 3 * 60000) return;
+  const keep = a.filter(x => now - x < 3 * 864e5); keep.push(now);
+  try{ localStorage.setItem(ACT_KEY, JSON.stringify(keep.slice(-400))); }catch(e){}
+}
+document.addEventListener('visibilitychange', () => actMark(true));
+document.addEventListener('pointerdown', () => actMark(false), {passive:true});
+window.addEventListener('pagehide', () => actMark(true));
+
+/* đoán đêm qua: khoảng nghỉ dài nhất (≥ 3 tiếng) giữa 18 giờ hôm qua và trưa nay */
+function sleepGuess(){
+  const now = Date.now(), t0 = new Date(); t0.setHours(12, 0, 0, 0);
+  const hi = Math.min(now, t0.getTime()), lo = t0.getTime() - 18 * 3600000;
+  const bm = S.meta && S.meta.bedMark && S.meta.bedMark > lo && S.meta.bedMark < hi ? S.meta.bedMark : 0;
+  const m = actMarks().filter(x => x >= lo && x <= hi).concat(bm ? [bm] : []).sort((a, b) => a - b);
+  m.push(now <= t0.getTime() ? now : hi);
+  let best = null;
+  for(let i = 1; i < m.length; i++){ const g = m[i] - m[i - 1]; if(g >= 3 * 3600000 && (!best || g > best[1] - best[0])) best = [m[i - 1], m[i]]; }
+  if(best) return {bed:best[0], wake:best[1], src:'app', bedTap: bm && Math.abs(bm - best[0]) < 60000};
+  const wp = typeof wakePlan === 'function' ? wakePlan() : null;
+  return {bedT: wp ? minToHHMM(wp.bed) : (S.profile.bedT || '23:00'), wakeT: wp ? minToHHMM(wp.wake) : hhmm(now), src:'default'};
+}
+function needMorningLog(){
+  const h = new Date().getHours(); if(h < 4 || h >= 14) return false;
+  return !S.sleep.some(n => n.d === todayStr());
+}
+function morningCardHtml(compact){
+  if(!needMorningLog()) return '';
+  const g = sleepGuess(), bed = g.bed ? hhmm(g.bed) : g.bedT, wk = g.wake ? hhmm(g.wake) : g.wakeT;
+  return '<section class="sec"><div class="card"><h3>Đêm qua ngủ thế nào?</h3><p class="small" style="margin-top:4px">' +
+    (g.src === 'app' ? 'Theo lúc bạn dùng điện thoại, có vẻ bạn ngủ khoảng <b>' + bed + '</b> và dậy khoảng <b>' + wk + '</b>.' : 'Ghi giờ ngủ, giờ dậy để app theo dõi xu hướng.') + ' Có số từ đồng hồ thì dán dữ liệu Sức khỏe sẽ chính xác hơn.</p>' +
+    '<div class="btn-row"><button class="btn small primary" data-act="sl-quick-ok">Đúng, lưu ' + bed + '–' + wk + '</button><button class="btn small ghost" data-act="sl-manual">Sửa giờ</button><button class="btn small ghost" data-act="hk-paste">Dán từ Sức khỏe</button></div></div></section>';
+}
+function quickNight(bedMs, wakeMs, extra){
+  const tib = Math.round((wakeMs - bedMs) / 60000); if(tib < 60 || tib > 16 * 60) return null;
+  const lat = extra && extra.lat != null ? extra.lat : 15, wakes = extra && extra.wakes != null ? extra.wakes : null;
+  const tst = Math.max(30, tib - lat - (wakes || 0) * 10);
+  const n = Object.assign({id:uid(), d:ymd(new Date(wakeMs)), start:bedMs, end:wakeMs, on:bedMs + lat * 60000, src:'quick', tib, tst, lat: extra && extra.lat != null ? lat : null, wakes, eff: extra && extra.lat != null ? Math.round(tst / tib * 100) : null, t:Date.now()}, extra && extra.feel ? {feel:extra.feel} : {});
+  return n;
+}
+function saveNight(n, replaceSrc){
+  Object.assign(n, nightScore(n, S.sleep.filter(x => x.end > n.end - 8 * DAY && x.end < n.end)));
+  S.sleep = S.sleep.filter(x => !(x.d === n.d && replaceSrc.includes(x.src))); S.sleep.push(n); S.sleep.sort((a, b) => a.end - b.end);
+  if(S.wake && S.wake.on){ S.wake.log = S.wake.log || {}; if(!S.wake.log[n.d]) S.wake.log[n.d] = hhmm(n.end); }
+  if(S.meta) delete S.meta.bedMark;
+}
+
+/* ----- 2. đọc giấc ngủ từ app Sức khỏe (đồng hồ Huawei hoặc iPhone ghi thời gian trên giường) ----- */
+function sleepKind(v){
+  const s = norm(v || '');
+  if(/sau|deep/.test(s)) return 'D';
+  if(/rem/.test(s)) return 'R';
+  if(/loi|core|nong|light/.test(s)) return 'L';
+  if(/thuc|awake|wake/.test(s)) return 'W';
+  if(/giuong|bed/.test(s)) return 'B';
+  if(/ngu|asleep|sleep/.test(s)) return 'A';
+  return null;
+}
+function looseDate(s, ref){
+  s = String(s || '').trim(); if(!s) return null;
+  if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)){ const d = new Date(s); if(!isNaN(d)) return d.getTime(); }
+  const tm = /(\d{1,2})[:h.](\d{2})(?:\s*(SA|CH|AM|PM))?/i.exec(s); if(!tm) return null;
+  let h = +tm[1]; const mi = +tm[2], ap = (tm[3] || '').toUpperCase(); if((ap === 'PM' || ap === 'CH') && h < 12) h += 12; if((ap === 'AM' || ap === 'SA') && h === 12) h = 0;
+  const dm = /(\d{1,2})\s*(?:thg|tháng|\/|-)\s*(\d{1,2})(?:[,\s\/-]+(\d{2,4}))?/i.exec(s.replace(tm[0], ''));
+  const d = new Date(ref); d.setSeconds(0, 0);
+  if(dm){ const a = +dm[1], b = +dm[2]; let y = dm[3] ? +dm[3] : d.getFullYear(); if(y < 100) y += 2000; const dd = /thg|tháng/i.test(dm[0]) ? a : (a > 12 ? a : b > 12 ? b : a), mm = /thg|tháng/i.test(dm[0]) ? b : (a > 12 ? b : b > 12 ? a : b); d.setFullYear(y, mm - 1, dd); }
+  else if(h >= 12) d.setDate(d.getDate() - 1);
+  d.setHours(h, mi, 0, 0); return d.getTime();
+}
+function parseSleepLines(text){
+  const ref = new Date(); ref.setHours(12, 0, 0, 0);
+  const out = [];
+  String(text || '').split(/\r?\n|\|\|/).forEach(line => {
+    const m = /^\s*NGU\s*[;|]\s*([^;|]*)[;|]\s*([^;|]*)[;|]\s*([^;|]*)/i.exec(line); if(!m) return;
+    const k = sleepKind(m[1]), a = looseDate(m[2], ref), b = looseDate(m[3], ref);
+    if(k && a && b && b > a && b - a < 16 * 3600000) out.push({k, a, b});
+  });
+  return out;
+}
+function nightFromSamples(sm){
+  if(!sm.length) return null;
+  /* chỉ lấy đêm gần nhất: cụm mẫu liền nhau kết thúc muộn nhất */
+  sm.sort((x, y) => x.a - y.a);
+  let grp = [], lastEnd = 0;
+  sm.forEach(s => { if(!grp.length || s.a - lastEnd > 3 * 3600000){ grp = [s]; } else grp.push(s); lastEnd = Math.max(lastEnd, s.b); });
+  const t0 = Math.min(...grp.map(s => s.a)), t1 = Math.max(...grp.map(s => s.b)), N = Math.round((t1 - t0) / 60000);
+  if(N < 60 || N > 16 * 60) return null;
+  const P = {B:1, W:2, A:3, L:4, R:5, D:6}, arr = new Uint8Array(N);
+  grp.forEach(s => { const i0 = Math.max(0, Math.floor((s.a - t0) / 60000)), i1 = Math.min(N, Math.ceil((s.b - t0) / 60000)); for(let i = i0; i < i1; i++) if(P[s.k] > arr[i]) arr[i] = P[s.k]; });
+  const asleep = v => v >= 3, hasStage = grp.some(s => s.k === 'D' || s.k === 'R' || s.k === 'L'), hasSleep = grp.some(s => s.k !== 'B' && s.k !== 'W');
+  const c = {W:0, L:0, D:0, R:0}; let first = -1, last = -1, wakes = 0, prevAsleep = false, awakeRun = 0;
+  for(let i = 0; i < N; i++){
+    const v = arr[i];
+    if(asleep(v)){ if(first < 0) first = i; last = i; if(!prevAsleep && first !== i && awakeRun >= 5) wakes++; prevAsleep = true; awakeRun = 0; c[v === 6 ? 'D' : v === 5 ? 'R' : 'L']++; }
+    else { if(first >= 0) awakeRun++; prevAsleep = false; c.W++; }
+  }
+  const n = {id:uid(), start:t0, end:t1, d:ymd(new Date(t1)), src:'health', tib:N, t:Date.now()};
+  if(hasSleep && first >= 0){
+    n.tst = c.L + c.D + c.R; n.lat = first; n.on = t0 + first * 60000; n.wakes = wakes; n.eff = Math.round(n.tst / N * 100); n.waso = Math.max(0, c.W - first - (N - 1 - last));
+    if(hasStage){ n.st = c; n.hyp = ''; for(let i = 0; i < N; i += 5){ const cc = {}; for(let j = i; j < Math.min(N, i + 5); j++){ const v = arr[j], k = v === 6 ? 'D' : v === 5 ? 'R' : v >= 3 ? 'L' : 'W'; cc[k] = (cc[k] || 0) + 1; } n.hyp += Object.keys(cc).sort((a, b) => cc[b] - cc[a])[0]; } }
+    n.how = hasStage ? 'stages' : 'asleep';
+  } else {
+    /* chỉ có "thời gian trên giường" do iPhone ước tính theo lúc bạn đặt máy xuống / cầm lên */
+    n.tst = Math.max(30, N - 15); n.lat = null; n.eff = null; n.wakes = null; n.how = 'inbed';
+  }
+  return n;
+}
+
+/* ----- 3. nhịp tim: nhịp nghỉ, HRV, vùng tim theo nhịp tim dự trữ (Karvonen) ----- */
+function hrSeries(k, days){ const out = []; for(let i = days - 1; i >= 0; i--){ const d = addDays(todayStr(), -i), h = S.health[d]; out.push(h && h[k] ? h[k] : 0); } return out; }
+function restHr(){ const v = hrSeries('rhr', 7).filter(Boolean).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : (S.profile.rhr || null); }
+function readiness(){
+  const t = S.health[todayStr()] || S.health[addDays(todayStr(), -1)]; if(!t || !t.rhr) return null;
+  const base = hrSeries('rhr', 15).slice(0, 14).filter(Boolean); if(base.length < 4) return null;
+  const b = sum(base) / base.length, hv = hrSeries('hrv', 15).slice(0, 14).filter(Boolean), hb = hv.length >= 4 ? sum(hv) / hv.length : 0;
+  const up = t.rhr - b, low = hb && t.hrv ? t.hrv / hb : 1;
+  if(up >= 7 || low < 0.75) return {lvl:'low', txt:'Nhịp tim nghỉ ' + t.rhr + ' (thường ' + Math.round(b) + ')' + (low < 0.75 ? ', HRV thấp hơn mọi khi' : '') + '. Cơ thể chưa hồi phục: hôm nay chạy thật nhẹ hoặc chỉ đi bộ, giãn cơ, ngủ sớm. Nếu kèm sốt, đau họng thì nghỉ hẳn.'};
+  if(up >= 4) return {lvl:'mid', txt:'Nhịp tim nghỉ ' + t.rhr + ', cao hơn thường lệ ' + Math.round(up) + ' nhịp. Vẫn tập được, nhưng buổi nặng thì giảm bớt cường độ.'};
+  return {lvl:'ok', txt:'Nhịp tim nghỉ ' + t.rhr + ' (thường ' + Math.round(b) + '): cơ thể hồi phục tốt.'};
+}
+function readinessHtml(){ const r = readiness(); if(!r || r.lvl === 'ok') return ''; return '<p class="sec note ' + (r.lvl === 'low' ? 'warn' : 'gold') + ' small"><b>Sẵn sàng tập:</b> ' + esc(r.txt) + '</p>'; }
+function hrTrendHtml(){
+  const rh = hrSeries('rhr', 14), hv = hrSeries('hrv', 14);
+  if(!rh.some(Boolean) && !hv.some(Boolean)) return '<section class="sec"><div class="sec-h"><h2>Nhịp tim nghỉ</h2></div><p class="small muted">Chưa có. Dán dữ liệu Sức khỏe có nhịp tim nghỉ (từ đồng hồ Huawei) hoặc nhập tay số trong app Huawei Sức khỏe. Nhịp nghỉ giảm dần qua các tháng là dấu hiệu sức bền tốt lên.</p><div class="btn-row"><button class="btn small ghost" data-act="hk-paste">Nhập nhịp tim</button></div></section>';
+  const days = []; for(let i = 13; i >= 0; i--) days.push(addDays(todayStr(), -i));
+  const lab = days.map(d => viDate(d).split('/')[0]);
+  return '<section class="sec"><div class="sec-h"><h2>Nhịp tim nghỉ</h2><span class="aside">Thấp và ổn định là tốt</span></div>' + barsHtml(rh, lab, v => v || '', 13) + '</section>' +
+    (hv.some(Boolean) ? '<section class="sec"><div class="sec-h"><h2>HRV</h2><span class="aside">Cao hơn mức thường là hồi phục tốt</span></div>' + barsHtml(hv, lab, v => v || '', 13) + '</section>' : '');
+}
+
+/* ----- 4. hướng dẫn cài đặt một lần ----- */
+function openSleepGuide(){
+  openSheet('Theo dõi giấc ngủ, không cần để màn sáng',
+    '<p class="small">App web trên iPhone không được chạy ngầm, nên Nhịp 21 không giữ máy bật cả đêm. Thay vào đó lấy số từ nơi đã đo sẵn. Chọn một cách, càng lên trên càng chính xác:</p>' +
+    '<ul class="tips"><li><b>1. Đeo đồng hồ Huawei khi ngủ (tốt nhất)</b>Đồng hồ đo nhịp tim và cử động, chia ngủ nông, sâu, REM. Trong app <b>Huawei Sức khỏe</b> bật chia sẻ sang <b>Apple Sức khỏe</b> (thường ở Tôi › Cài đặt › Chia sẻ và ủy quyền dữ liệu › Sức khỏe; tên mục tùy phiên bản), cho phép Giấc ngủ, Nhịp tim, Bước, Bài tập. Sáng ra chạy phím tắt <b>Nhịp 21</b> rồi Dán.</li>' +
+    '<li><b>2. Chỉ dùng iPhone, không đeo đồng hồ</b>Mở app <b>Sức khỏe</b> › Ngủ › đặt <b>Lịch ngủ</b> và bật <b>Chế độ tập trung Ngủ</b>. iPhone tự ghi “thời gian trên giường” theo lúc bạn đặt máy xuống và cầm lên, kể cả khi màn hình tắt. Phím tắt Nhịp 21 lấy được số này.</li>' +
+    '<li><b>3. Không cần cài gì</b>Tối chạm <b>Đi ngủ</b> trong app, sáng mở app: app đoán giờ ngủ và giờ dậy theo lúc bạn dùng điện thoại, bạn chỉ cần xác nhận. Ghi thêm cảm giác khi dậy để thấy xu hướng.</li></ul>' +
+    '<p class="small muted" style="margin-top:8px">Cách 1 và 2 không tốn pin thêm: iPhone và đồng hồ vẫn đo như bình thường, Nhịp 21 chỉ đọc kết quả mỗi sáng.</p>' +
+    '<div class="btn-col"><button class="btn primary" data-act="hk-guide">Cách làm phím tắt Nhịp 21</button><button class="btn ghost" data-act="alarm-guide">Báo thức và chống ngủ nướng</button></div>');
+}
+function openAlarmGuide(){
+  const wp = typeof wakePlan === 'function' ? wakePlan() : null, wk = wp ? minToHHMM(wp.wake) : (S.profile.wakeT || '06:30');
+  openSheet('Báo thức trên iPhone',
+    '<p class="small">Báo thức của app web không kêu được khi khóa máy, nên dùng báo thức của iPhone: chắc chắn kêu, không tốn pin.</p>' +
+    '<ol class="how"><li>Mở <b>Sức khỏe</b> › <b>Ngủ</b> › <b>Lịch ngủ</b> (hoặc Đồng hồ › Báo thức › Ngủ | Thức dậy). Đặt giờ dậy <b>' + wk + '</b>' + (wp && !wp.done ? '; app sẽ nhắc khi tới lúc dời sớm hơn ' + wp.step + ' phút' : '') + '.</li>' +
+    '<li>Bật <b>Chế độ tập trung Ngủ</b> theo lịch: máy tự im lặng ban đêm, sáng tự tắt.</li>' +
+    '<li>Để điện thoại <b>xa giường</b> (bàn hoặc góc phòng): phải đứng dậy mới tắt được. Đây là cách chống ngủ nướng hiệu quả nhất.</li></ol>' +
+    '<div class="sec-h" style="margin-top:14px"><h2>Tắt báo thức xong là tỉnh</h2></div>' +
+    '<ol class="how"><li>App <b>Phím tắt</b> › <b>Tự động hóa</b> › <b>+</b> › <b>Báo thức</b> › chọn <b>Bị dừng</b> (Is Stopped) › <b>Chạy ngay</b>.</li>' +
+    '<li>Thêm: <b>Đặt độ sáng</b> 100%, <b>Hiển thị thông báo</b> “Uống 1 cốc nước, mở rèm, đi 2 phút”, có thể thêm <b>Phát nhạc</b> một bài sôi động.</li>' +
+    '<li>Đồng hồ Huawei cũng rung báo thức trên tay, nhẹ nhàng hơn chuông điện thoại; đặt trong app Huawei Sức khỏe hoặc trên đồng hồ.</li></ol>' +
+    '<p class="small muted" style="margin-top:8px">Tự động hóa không tạo tệp hay mục rác nào, không tốn bộ nhớ.</p>');
+}
+Object.assign(ACT, {
+  'sl-guide': () => openSleepGuide(),
+  'alarm-guide': () => openAlarmGuide(),
+  'sl-bed': () => { S.meta = S.meta || {}; S.meta.bedMark = Date.now(); actMark(true); persist(); toast('Chúc ngủ ngon! Sáng mai mở app để xác nhận giờ dậy.'); renderAll(); },
+  'sl-quick-ok': () => {
+    const g = sleepGuess(); let bed = g.bed, wk = g.wake;
+    if(!bed){ const now = new Date(), e = new Date(now), w = tmin(g.wakeT), bm = tmin(g.bedT); e.setHours(Math.floor(w / 60), w % 60, 0, 0); if(e > now) e.setTime(now.getTime()); const s = new Date(e); s.setHours(Math.floor(bm / 60), bm % 60, 0, 0); if(s >= e) s.setDate(s.getDate() - 1); bed = s.getTime(); wk = e.getTime(); }
+    const n = quickNight(bed, wk); if(!n){ openSleepManual(); return; }
+    saveNight(n, ['quick', 'manual']); persist(); renderAll(); toast('Đã lưu: ngủ ' + fmtHm(n.tst) + ', điểm ' + n.score + '.');
+  }
+});
+
+/* ----- 5. âm thanh ngủ phát được khi khóa máy, không cần để màn sáng ----- */
+/* Lần đầu với một tổ hợp âm: phát trực tiếp và thu lại 2 phút (màn hình tối), sau đó chuyển sang phát vòng lặp bằng trình phát nhạc của iPhone,
+   khóa máy vẫn kêu. Những đêm sau phát ngay bản đã thu. Tối đa 6 bản, mỗi bản khoảng 1–2 MB. */
+const BGS = {on:false};
+let BAKE_MS = 120000;
+document.addEventListener('click', e => { const el = $('#calm'); if(BGS.on && el && el.classList.contains('dim') && el.contains(e.target)){ el.classList.remove('dim'); } }, true);
+function bgSig(mix){ return 'bake:' + mix.map(m => m.k + '@' + Math.round((m.v || 0.7) * 20)).sort().join('+'); }
+function bgFmt(){ if(!window.MediaRecorder) return null; for(const t of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']) if(MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t; return null; }
+function bgPaint(){
+  const el = $('#calm'); if(!el || !BGS.on) return;
+  const left = Math.max(0, BGS.endAt - Date.now()), st = BGS.stage;
+  el.innerHTML = '<div class="cm-top"><span>' + esc(BGS.title) + '</span><span>' + (left ? Math.ceil(left / 60000) + ' phút' : '') + '</span><button class="pl-x" data-act="bg-stop" aria-label="Tắt">' + ICON.x + '</button></div>' +
+    '<div class="cm-main"><div class="med-orb"></div><p class="cm-kind">Âm thanh ngủ</p><h2 class="cm-title">' + esc(BGS.title) + '</h2>' +
+    (st === 'bake' ? '<p class="cm-note">Lần đầu với tổ hợp này: đang chuẩn bị bản phát khi khóa máy, còn khoảng ' + Math.max(0, Math.ceil((BGS.bakeEnd - Date.now()) / 1000)) + ' giây. Màn hình tạm giữ sáng (đã tối đi). Xong sẽ báo, khi đó khóa máy thoải mái.</p>'
+      : st === 'live' ? '<p class="cm-note">Máy này chưa hỗ trợ phát nền, nên cần để màn hình mở. Cách tiết kiệm hơn: dùng <b>Âm thanh nền</b> có sẵn của iPhone (Cài đặt › Trợ năng › Âm thanh/Hình ảnh › Âm thanh nền).</p>'
+      : '<p class="cm-note"><b>Khóa máy được rồi</b>, âm thanh vẫn phát. Tắt từ màn hình khóa hoặc mở app. Muốn chắc chắn tự tắt sau ' + BGS.min + ' phút: Đồng hồ › Hẹn giờ › Khi kết thúc › <b>Dừng phát</b>.</p>') +
+    '<div class="btn-row" style="justify-content:center;margin-top:18px"><button class="btn ghost" data-act="bg-stop" style="color:inherit;border-color:rgba(255,255,255,.35)">Tắt âm thanh</button></div></div>';
+}
+async function bgSleepStart(mix, min, title){
+  ensureAudio(); bgSilent(true); closeSheet();
+  Object.assign(BGS, {on:true, mix, min, title:title || mix.map(m => sndName(m.k)).join(' + '), endAt:Date.now() + min * 60000, stage:'load'});
+  const el = $('#calm'); el.classList.remove('dim'); el.hidden = false; document.body.style.overflow = 'hidden';
+  clearInterval(BGS.iv); BGS.iv = setInterval(bgTick, 1000);
+  const sig = bgSig(mix);
+  let row = null; try{ row = await MediaDB.get('bake', sig); }catch(e){}
+  if(!BGS.on) return;
+  if(row && row.blob && row.blob.size > 10000){ try{ row.t = Date.now(); MediaDB.put('bake', sig, row); }catch(e){} bgPlayBlob(row.blob); return; }
+  Mix.play(mix, S.profile.calmVol || 0.6);
+  const fmt = bgFmt();
+  if(!fmt || !AC || !AC.createMediaStreamDestination){ BGS.stage = 'live'; wake(true); bgPaint(); return; }
+  BGS.stage = 'bake'; BGS.bakeEnd = Date.now() + BAKE_MS + 4000; wake(true); bgPaint(); setTimeout(() => { if(BGS.on && BGS.stage === 'bake') el.classList.add('dim'); }, 8000);
+  setTimeout(() => {
+    if(!BGS.on) return;
+    try{
+      const dest = Mix.tap(), rec = new MediaRecorder(dest.stream, {mimeType:fmt, audioBitsPerSecond:96000}), parts = [];
+      rec.ondataavailable = e => { if(e.data && e.data.size) parts.push(e.data); };
+      rec.onstop = async () => {
+        Mix.untap(dest);
+        const b = new Blob(parts, {type:fmt.split(';')[0]});
+        if(b.size < 10000 || !BGS.on){ if(BGS.on){ BGS.stage = 'live'; bgPaint(); } return; }
+        try{ await MediaDB.put('bake', sig, {blob:b, t:Date.now()}); bgPrune(sig); }catch(e){}
+        bgPlayBlob(b);
+      };
+      rec.start(); BGS.rec = rec; setTimeout(() => { try{ rec.state !== 'inactive' && rec.stop(); }catch(e){} }, BAKE_MS);
+    }catch(e){ BGS.stage = 'live'; bgPaint(); }
+  }, 4000);
+}
+function bgPlayBlob(b){
+  const a = bgEl(); try{ if(a._url) URL.revokeObjectURL(a._url); }catch(e){}
+  a._url = URL.createObjectURL(b); a.src = a._url; a.loop = true; a.muted = false;
+  a.play().then(() => { Mix.stop(2); BGS.stage = 'bg'; wake(false); $('#calm').classList.remove('dim'); bgPaint(); toast('Đã sẵn sàng. Khóa máy được rồi.'); bgMeta(); })
+    .catch(() => { BGS.stage = 'live'; bgPaint(); });
+}
+function bgMeta(){ try{ if('mediaSession' in navigator){ navigator.mediaSession.metadata = new MediaMetadata({title:BGS.title, artist:'Nhịp 21 · âm thanh ngủ'}); navigator.mediaSession.setActionHandler('pause', () => bgStop()); navigator.mediaSession.setActionHandler('stop', () => bgStop()); } }catch(e){} }
+function bgTick(){ if(!BGS.on) return; if(Date.now() >= BGS.endAt){ bgStop(true); return; } if(!$('#calm').classList.contains('dim') || BGS.stage === 'bake') bgPaint(); }
+function bgStop(auto){
+  if(!BGS.on) return; BGS.on = false; clearInterval(BGS.iv);
+  try{ BGS.rec && BGS.rec.state !== 'inactive' && BGS.rec.stop(); }catch(e){}
+  const a = bgEl(); try{ a.pause(); }catch(e){} bgSilent(false);
+  Mix.stop(auto ? 3 : 1); wake(false);
+  const el = $('#calm'); el.hidden = true; el.innerHTML = ''; document.body.style.overflow = '';
+  if(auto) S.mindLog.push({id:uid(), d:todayStr(), t:Date.now(), kind:'sound', min:BGS.min}), persist();
+}
+async function bgPrune(keep){ try{ const rows = await MediaDB.all('bake'); rows.sort((a, b) => (a[1] && a[1].t || 0) - (b[1] && b[1].t || 0)); const extra = rows.filter(r => r[0] !== keep).slice(0, Math.max(0, rows.length - 6)); for(const r of extra) await MediaDB.del('bake', r[0]); }catch(e){} }
+Object.assign(ACT, { 'bg-stop': () => bgStop(false) });
+
 function kmChart(){
   const weeks = [], m = mondayOf(todayStr());
   for(let i = 7; i >= 0; i--){ const s = addDays(m, -7*i); weeks.push([s, kmIn(weekRange(s))]); }
@@ -5266,42 +5559,52 @@ Object.assign(ACT, {
 
 /* ================= Sức khỏe iPhone qua Phím tắt ================= */
 function parseHealth(text){
-  const t = String(text || ''); if(!/NHIP21-SK/i.test(t)) return null;
-  const get = k => { const m = new RegExp(k + '\\s*[=:]\\s*([0-9][0-9.,\\s]*)', 'i').exec(t); return m ? m[1].trim() : null; };
-  const toNum = (s, intg) => { if(s == null) return null; s = s.replace(/\s/g, ''); if(intg){ if(/^\d{1,3}([.,]\d{3})+([.,]\d+)?$/.test(s)) s = s.replace(/[.,](?=\d{3}(\D|$))/g, ''); return Math.round(parseFloat(s.replace(',', '.'))); } return parseFloat(s.replace(',', '.')); };
+  const t = String(text || ''); const hasSk = /NHIP21-SK/i.test(t), sl = parseSleepLines(t);
+  if(!hasSk && !sl.length) return null;
+  const get = k => { const m = new RegExp('[|\\s]' + k + '\\s*[=:]\\s*([0-9][0-9.,\\s]*)', 'i').exec('|' + t); return m ? m[1].trim() : null; };
+  const toNum = (s, intg) => { if(s == null || s === '') return null; s = s.replace(/\s/g, ''); if(intg){ if(/^\d{1,3}([.,]\d{3})+([.,]\d+)?$/.test(s)) s = s.replace(/[.,](?=\d{3}(\D|$))/g, ''); const v = Math.round(parseFloat(s.replace(',', '.'))); return isNaN(v) ? null : v; } const v = parseFloat(s.replace(',', '.')); return isNaN(v) ? null : v; };
   const dm = /d\s*=\s*(\d{4}-\d{2}-\d{2})/.exec(t);
-  const r = {steps:toNum(get('steps'), true), km:toNum(get('km')), kcal:toNum(get('kcal'), true), d:dm ? dm[1] : null};
+  const r = {steps:toNum(get('steps'), true), km:toNum(get('km')), kcal:toNum(get('kcal'), true), rhr:toNum(get('rhr'), true), hrv:toNum(get('hrv'), true), hravg:toNum(get('hravg'), true), hrmax:toNum(get('hrmax'), true), d:dm ? dm[1] : null, sleep:sl};
   if(r.km != null && r.km > 200) r.km = r.km / 1000;
-  if(r.steps == null && r.km == null) return null;
+  if(r.rhr != null && (r.rhr < 30 || r.rhr > 120)) r.rhr = null;
+  if(r.hrv != null && (r.hrv < 5 || r.hrv > 250)) r.hrv = null;
+  if(r.steps == null && r.km == null && r.rhr == null && r.hrv == null && !sl.length) return null;
   return r;
 }
 function saveHealth(r, yesterday){
-  const d = r.d || (yesterday ? addDays(todayStr(), -1) : todayStr());
-  S.health[d] = Object.assign(S.health[d] || {}, {steps:r.steps || 0, km:r.km || 0, kcal:r.kcal || 0, t:Date.now()});
+  const d = r.d || (yesterday ? addDays(todayStr(), -1) : todayStr()), msg = [];
+  const h = S.health[d] = Object.assign(S.health[d] || {}, {t:Date.now()});
+  ['steps','km','kcal','rhr','hrv','hravg','hrmax'].forEach(k => { if(r[k] != null && r[k] !== '' && !(k === 'steps' && !r[k] && h.steps)) h[k] = r[k]; });
+  if(r.steps) msg.push(int(r.steps) + ' bước'); if(r.km) msg.push(num(r1(r.km)) + ' km'); if(r.rhr) msg.push('nhịp nghỉ ' + r.rhr); if(r.hrv) msg.push('HRV ' + r.hrv);
+  if(r.rhr){ S.health[todayStr()] = Object.assign(S.health[todayStr()] || {}, {rhr:r.rhr}, r.hrv ? {hrv:r.hrv} : {}); }
   S.profile.lastHealth = Date.now();
-  const ks = Object.keys(S.health).sort(); ks.slice(0, Math.max(0, ks.length - 400)).forEach(k => delete S.health[k]);
-  persist(); renderAll(); toast('Đã nhập ' + int(r.steps || 0) + ' bước' + (r.km ? ', ' + num(r1(r.km)) + ' km' : '') + ' cho ' + (d === todayStr() ? 'hôm nay' : viDate(d)) + '.');
+  if(r.sleep && r.sleep.length){ const n = nightFromSamples(r.sleep); if(n){ const old = S.sleep.find(x => x.d === n.d && x.feel); if(old) n.feel = old.feel; saveNight(n, ['quick', 'manual', 'health']); msg.push('giấc ngủ ' + fmtHm(n.tst) + (n.st ? ' (có ngủ sâu, REM)' : '')); } }
+  const ks = Object.keys(S.health).sort(); ks.slice(0, Math.max(0, ks.length - 4000)).forEach(k => delete S.health[k]);
+  persist(); renderAll(); toast(msg.length ? 'Đã nhập ' + msg.join(', ') + '.' : 'Đã lưu.');
 }
 function openHealthGuide(){
-  openSheet('Lấy số bước từ app Sức khỏe',
-    '<p class="small">Web app không được Apple cho đọc thẳng app Sức khỏe, nên ta nhờ <b>Phím tắt</b> (có sẵn trên iPhone) chép số liệu, rồi dán vào đây. Chỉ làm một lần, khoảng 5 phút.</p>' +
-    '<ol class="how"><li>Mở app <b>Phím tắt</b> (Shortcuts) → dấu <b>+</b> → đặt tên <b>Nhịp 21 Sức khỏe</b>.</li>' +
-    '<li>Thêm hành động <b>Tìm mẫu Sức khỏe</b> (Find Health Samples): Loại <b>Số bước</b> (Steps), Ngày bắt đầu <b>là hôm nay</b> (is today).</li>' +
-    '<li>Thêm <b>Tính thống kê</b> (Calculate Statistics) → <b>Tổng</b> (Sum). Bấm vào kết quả, đổi tên biến thành <b>Buoc</b>.</li>' +
-    '<li>Lặp lại bước 2–3 với loại <b>Khoảng cách đi bộ + chạy</b> (Walking + Running Distance), đặt tên <b>Km</b>. Nếu muốn, thêm <b>Năng lượng hoạt động</b> (Active Energy), tên <b>Kcal</b>.</li>' +
-    '<li>Thêm hành động <b>Văn bản</b> (Text) và gõ đúng mẫu dưới đây, chèn biến vào chỗ tương ứng:<div class="code" style="margin-top:6px">NHIP21-SK|steps=[Buoc]|km=[Km]|kcal=[Kcal]</div></li>' +
-    '<li>Thêm <b>Sao chép vào bảng tạm</b> (Copy to Clipboard). Xong.</li>' +
-    '<li>Mỗi ngày: chạy phím tắt (từ màn hình chính hoặc widget), mở Nhịp 21, bấm <b>Dán dữ liệu Sức khỏe</b>.</li></ol>' +
-    '<p class="small muted" style="margin-top:8px">Đơn vị khoảng cách để km. Nếu chạy phím tắt vào sáng hôm sau, tích “Dữ liệu của hôm qua” khi dán. Đồng hồ Huawei: trong app <b>Huawei Health</b> bật chia sẻ dữ liệu sang <b>Apple Sức khỏe</b> (mục Tôi → Quyền riêng tư/Chia sẻ dữ liệu, tên mục tùy phiên bản) để bước chân và bài tập từ đồng hồ cũng vào đây.</p>' +
+  openSheet('Phím tắt “Nhịp 21”: số bước, nhịp tim, giấc ngủ',
+    '<p class="small">Apple không cho app web đọc thẳng app Sức khỏe, nên ta nhờ <b>Phím tắt</b> có sẵn trên iPhone chép số liệu, rồi dán vào Nhịp 21. Làm một lần khoảng 10 phút; sau đó mỗi sáng chạm 2 lần. Không chạy ngầm, không tốn pin.</p>' +
+    '<p class="small" style="margin-top:8px"><b>Trước tiên, đồng hồ Huawei:</b> app <b>Huawei Sức khỏe</b> › Tôi › (Cài đặt) › <b>Chia sẻ và ủy quyền dữ liệu</b> › <b>Sức khỏe</b> (Apple Health) › bật Bước, Khoảng cách, Nhịp tim, Giấc ngủ, Bài tập. Tên mục có thể khác chút tùy phiên bản. Kiểm tra: app Sức khỏe của iPhone › Duyệt › Tim › Nhịp tim, thấy nguồn Huawei là được.</p>' +
+    '<ol class="how" style="margin-top:10px"><li>Mở <b>Phím tắt</b> › dấu <b>+</b> › đặt tên <b>Nhịp 21</b>.</li>' +
+    '<li><b>Số bước:</b> thêm <b>Tìm mẫu Sức khỏe</b> (Find Health Samples), Loại <b>Số bước</b>, Ngày bắt đầu <b>là hôm nay</b>. Thêm <b>Tính thống kê</b> › <b>Tổng</b>, đổi tên kết quả thành <b>Buoc</b>. Làm y như vậy với <b>Khoảng cách đi bộ + chạy</b> (tên <b>Km</b>, đơn vị km).</li>' +
+    '<li><b>Nhịp tim nghỉ:</b> <b>Tìm mẫu Sức khỏe</b>, Loại <b>Nhịp tim lúc nghỉ</b> (Resting Heart Rate), Sắp xếp theo <b>Ngày bắt đầu</b>, <b>Mới nhất trước</b>, Giới hạn <b>1</b>. Đổi tên thành <b>NhipNghi</b>. Nếu có, làm tương tự với <b>Biến thiên nhịp tim</b> (HRV), tên <b>HRV</b>.</li>' +
+    '<li><b>Giấc ngủ:</b> <b>Tìm mẫu Sức khỏe</b>, Loại <b>Phân tích giấc ngủ</b> (Sleep Analysis), Ngày bắt đầu <b>trong 1 ngày qua</b>. Thêm <b>Lặp lại với từng mục</b> (Repeat with Each), bên trong thêm <b>Văn bản</b>:<div class="code" style="margin-top:6px">NGU;[Mục lặp lại › Giá trị];[Mục lặp lại › Ngày bắt đầu];[Mục lặp lại › Ngày kết thúc]</div>Chạm vào từng biến ngày › <b>Định dạng ngày</b> › <b>ISO 8601</b>. Sau <b>Kết thúc lặp lại</b>, thêm <b>Kết hợp văn bản</b> (Combine Text) bằng <b>Dòng mới</b>, đổi tên thành <b>Ngu</b>.</li>' +
+    '<li>Thêm <b>Văn bản</b> cuối cùng, gõ đúng mẫu, chèn biến vào ngoặc:<div class="code" style="margin-top:6px">NHIP21-SK|steps=[Buoc]|km=[Km]|rhr=[NhipNghi]|hrv=[HRV]<br>[Ngu]</div></li>' +
+    '<li>Thêm <b>Sao chép vào bảng tạm</b>. Xong. Kéo phím tắt ra màn hình chính hoặc widget cho tiện.</li>' +
+    '<li><b>Mỗi sáng:</b> chạy phím tắt › mở Nhịp 21 › <b>Dán từ Sức khỏe</b>. Không cần làm đủ các bước: chỉ có số bước, hay chỉ có giấc ngủ cũng dán được.</li></ol>' +
+    '<p class="small muted" style="margin-top:8px">Không đeo đồng hồ khi ngủ? Bật Lịch ngủ trong app Sức khỏe, iPhone tự ghi “thời gian trên giường” theo lúc bạn đặt máy xuống và cầm lên; phím tắt trên lấy được số đó.</p>' +
     '<div class="btn-col"><button class="btn primary" data-act="hk-paste">Dán dữ liệu ngay</button></div>');
 }
 function openHealthPaste(){
-  openSheet('Dán dữ liệu Sức khỏe', '<p class="small">Chạy phím tắt “Nhịp 21 Sức khỏe” trước, rồi bấm Dán. Nếu nút Dán không chạy, chạm giữ vào ô bên dưới, chọn Dán.</p>' +
+  const h = S.health[todayStr()] || {};
+  openSheet('Dán dữ liệu Sức khỏe', '<p class="small">Chạy phím tắt “Nhịp 21” trước, rồi bấm Dán. Nếu nút không chạy, chạm giữ vào ô bên dưới, chọn Dán.</p>' +
     '<div class="btn-row"><button class="btn primary" data-act="hk-clip">Dán từ bảng tạm</button></div>' +
-    '<label class="field"><span>Hoặc dán vào đây</span><textarea id="hkIn" rows="3" placeholder="NHIP21-SK|steps=8523|km=6,2"></textarea></label>' +
-    '<label class="check"><input type="checkbox" id="hkY"> Dữ liệu của hôm qua</label>' +
+    '<label class="field"><span>Hoặc dán vào đây</span><textarea id="hkIn" rows="3" placeholder="NHIP21-SK|steps=8523|km=6,2|rhr=58"></textarea></label>' +
+    '<label class="check"><input type="checkbox" id="hkY"> Số bước là của hôm qua</label>' +
     '<p class="form-err" id="hkErr" hidden></p><div class="btn-row"><button class="btn ghost" data-act="hk-save">Lưu</button><button class="linkish small" data-act="hk-guide">Chưa có phím tắt? Xem cách làm</button></div>' +
-    '<div class="sec"><p class="small" style="font-weight:600">Hoặc nhập tay</p><div class="two"><label class="field"><span>Số bước</span><input id="hkSteps" inputmode="numeric" pattern="[0-9]*"></label><label class="field"><span>Km đi bộ + chạy</span><input id="hkKm" inputmode="decimal"></label></div></div>');
+    '<div class="sec"><p class="small" style="font-weight:600">Hoặc nhập tay (xem trong app Huawei Sức khỏe)</p><div class="two"><label class="field"><span>Số bước</span><input id="hkSteps" inputmode="numeric" pattern="[0-9]*" value="' + (h.steps || '') + '"></label><label class="field"><span>Km đi bộ + chạy</span><input id="hkKm" inputmode="decimal" value="' + (h.km ? String(r1(h.km)).replace('.', ',') : '') + '"></label>' +
+    '<label class="field"><span>Nhịp tim lúc nghỉ</span><input id="hkRhr" inputmode="numeric" pattern="[0-9]*" placeholder="vd. 58" value="' + (h.rhr || '') + '"></label><label class="field"><span>HRV (nếu có)</span><input id="hkHrv" inputmode="numeric" pattern="[0-9]*" value="' + (h.hrv || '') + '"></label></div></div>');
 }
 Object.assign(ACT, {
   'hk-guide': () => openHealthGuide(),
@@ -5310,16 +5613,16 @@ Object.assign(ACT, {
   'hk-save': () => {
     const t = $('#hkIn').value, y = $('#hkY').checked, r = parseHealth(t);
     if(r){ closeSheet(); saveHealth(r, y); return; }
-    const st = parseInt(($('#hkSteps').value || '').replace(/\D/g, ''), 10), km = parseNum($('#hkKm').value);
-    if(st || km){ closeSheet(); saveHealth({steps:st || 0, km:km || 0}, y); return; }
-    showErr('hkErr', 'Không thấy dữ liệu. Dán đoạn bắt đầu bằng NHIP21-SK hoặc nhập tay số bước.');
+    const st = parseInt(($('#hkSteps').value || '').replace(/\D/g, ''), 10), km = parseNum($('#hkKm').value), rhr = parseInt($('#hkRhr').value, 10), hrv = parseInt($('#hkHrv').value, 10);
+    if(st || km || rhr || hrv){ closeSheet(); saveHealth({steps:st || null, km:km || null, rhr:rhr >= 30 && rhr <= 120 ? rhr : null, hrv:hrv >= 5 && hrv <= 250 ? hrv : null}, y); return; }
+    showErr('hkErr', 'Không thấy dữ liệu. Dán đoạn bắt đầu bằng NHIP21-SK hoặc nhập tay.');
   }
 });
 
 /* ================= cài đặt, sao lưu, bộ nhớ ================= */
 function storageInfo(){
   let ls = 0; try{ ls = (localStorage.getItem(LS_KEY) || '').length * 2; }catch(e){}
-  return Promise.all([MediaDB.all('clips').catch(() => []), Promise.resolve(OWN.list)]).then(([clips, own]) => ({ls, clips:clips.length, clipB:sum(clips, ([k, v]) => v && v.blob ? v.blob.size : 0), own:own.length, ownB:sum(own, f => f.size || 0)}));
+  return Promise.all([MediaDB.all('clips').catch(() => []), Promise.resolve(OWN.list), MediaDB.all('bake').catch(() => [])]).then(([clips, own, bake]) => ({ls, clips:clips.length, clipB:sum(clips, ([k, v]) => v && v.blob ? v.blob.size : 0), own:own.length, ownB:sum(own, f => f.size || 0), bake:bake.length, bakeB:sum(bake, ([k, v]) => v && v.blob ? v.blob.size : 0)}));
 }
 function openSettings(){
   const p = S.profile, voice = !!viVoice();
@@ -5343,6 +5646,9 @@ function openSettings(){
       '<div id="stDays">' + stDaysHtml() + '</div>' +
       '<label class="field"><span>Thời gian chạy 5 km</span><input id="stFive" data-time inputmode="numeric" pattern="[0-9]*" placeholder="vd. 3230 = 32:30" value="' + (p.fiveK ? fmtPace(p.fiveK) : '') + '"><small>Gõ số liền, app tự thêm dấu “:”. Để trống thì app ước tính từ các buổi chạy.</small></label>' +
       '</div></details>' +
+    '<details class="plan" style="margin-top:10px"><summary><h2>Pin và màn hình</h2></summary><div class="bk">' +
+      '<p class="small">Mặc định Nhịp 21 không giữ màn hình sáng: buổi chạy đo bằng đồng hồ rồi ghi lại, giấc ngủ lấy từ app Sức khỏe. Chỉ bật mục dưới nếu bạn muốn chạy với điện thoại cầm tay.</p>' +
+      '<label class="check"><input type="checkbox" id="stPhoneRun"' + (p.phoneRun ? ' checked' : '') + '> Hiện nút đo GPS bằng điện thoại khi chạy (phải để màn hình mở, tốn pin)</label></div></details>' +
     '<details class="plan" style="margin-top:10px"><summary><h2>Âm thanh</h2></summary><div class="bk">' +
       '<label class="check"><input type="checkbox" id="stSound"' + (p.sound ? ' checked' : '') + '> Tiếng bíp đếm ngược và chuông nhắc</label>' +
       '<label class="check"><input type="checkbox" id="stVoice"' + (p.voice ? ' checked' : '') + '> Giọng đọc' + (voice ? '' : ' <span class="muted small">(máy này chưa có giọng tiếng Việt)</span>') + '</label>' +
@@ -5359,7 +5665,7 @@ function openSettings(){
     '<p class="form-err" id="stErr" hidden></p><div class="btn-col"><button class="btn primary" data-act="save-settings">Lưu cài đặt</button></div>' +
     '<div class="sec" id="resetBox"><button class="linkish" data-act="reset-ask">Xóa toàn bộ dữ liệu trên máy này</button></div><p class="small muted" style="margin-top:10px">Nhịp 21 phiên bản ' + APP_VER + '. Dữ liệu chỉ nằm trên máy này, không gửi đi đâu.</p>');
   storageInfo().then(st => { const b = $('#storeBox'); if(!b) return; const mb = x => num(r1(x / 1048576)) + ' MB';
-    b.innerHTML = '<ul class="tips"><li><b>Nhật ký, lịch, giấc ngủ</b>' + num(r1(st.ls / 1024)) + ' KB</li><li><b>Đoạn ghi âm khi ngủ</b>' + st.clips + ' đoạn, ' + mb(st.clipB) + ' (tự xóa sau 7 ngày)</li><li><b>Nhạc của bạn</b>' + st.own + ' file, ' + mb(st.ownB) + '</li></ul><div class="btn-row"><button class="btn small ghost" data-act="clips-clear">Xóa hết đoạn ghi âm</button><button class="btn small ghost" data-act="compact-now">Gộp dữ liệu cũ hơn 1 năm</button></div><p class="hint">Dùng nhiều năm vẫn nhẹ: mỗi tháng app tự gộp bản ghi cũ hơn 1 năm theo ngày (tổng phút thiền, tập trung, đọc, kcal vẫn đúng), buổi chạy, buổi tập và số đo giữ nguyên. Dung lượng hiện tại ' + num(r1(st.ls / 1024)) + ' KB trên khoảng 5.000 KB trình duyệt cho phép.' + (S.meta.bkAt ? ' Sao lưu gần nhất ' + viDate(ymd(new Date(S.meta.bkAt))) + '.' : ' Chưa sao lưu lần nào.') + '</p>'; });
+    b.innerHTML = '<ul class="tips"><li><b>Nhật ký, lịch, giấc ngủ</b>' + num(r1(st.ls / 1024)) + ' KB</li><li><b>Đoạn ghi âm khi ngủ</b>' + st.clips + ' đoạn, ' + mb(st.clipB) + ' (tự xóa sau 7 ngày)</li><li><b>Nhạc của bạn</b>' + st.own + ' file, ' + mb(st.ownB) + '</li><li><b>Âm thanh ngủ đã thu sẵn</b>' + st.bake + ' bản, ' + mb(st.bakeB) + ' (giữ tối đa 6 bản)</li></ul><div class="btn-row"><button class="btn small ghost" data-act="clips-clear">Xóa hết đoạn ghi âm</button><button class="btn small ghost" data-act="bake-clear">Xóa âm thanh ngủ đã thu</button><button class="btn small ghost" data-act="compact-now">Gộp dữ liệu cũ hơn 1 năm</button></div><p class="hint">Dùng nhiều năm vẫn nhẹ: mỗi tháng app tự gộp bản ghi cũ hơn 1 năm theo ngày (tổng phút thiền, tập trung, đọc, kcal vẫn đúng), buổi chạy, buổi tập và số đo giữ nguyên. Dung lượng hiện tại ' + num(r1(st.ls / 1024)) + ' KB trên khoảng 5.000 KB trình duyệt cho phép.' + (S.meta.bkAt ? ' Sao lưu gần nhất ' + viDate(ymd(new Date(S.meta.bkAt))) + '.' : ' Chưa sao lưu lần nào.') + '</p>'; });
 }
 function stDaysHtml(){
   return '<div class="field"><span>Ngày chạy dài</span><div class="chips">' + dayChips('st-long', [UI.st.longDay], [5,6]) + '</div></div>' +
@@ -5386,12 +5692,13 @@ Object.assign(ACT, {
     const one = id => { const c = $('#' + id + ' .chip[aria-pressed="true"]'); return c ? c.dataset.v : null; };
     Object.assign(p, {fiveK:five, longDay:UI.st.longDay, runDays:UI.st.runDays.slice().sort((a, b) => a - b), age, height:h, hrMax:hr && hr > 120 && hr < 230 ? hr : null,
       sex:one('stSex') || p.sex, goal:one('stGoal') || p.goal, bottleMl:+$('#stBottle').value, stepGoal:+$('#stSteps').value, sleepGoal:+$('#stSleep').value, mindGoal:+$('#stMind').value, readGoal:+$('#stRead').value, moveGoal:+$('#stMove').value,
-      activeGoal:+$('#stAct').value, snackTarget:+$('#stSnack').value, sound:$('#stSound').checked, voice:$('#stVoice').checked});
+      activeGoal:+$('#stAct').value, snackTarget:+$('#stSnack').value, sound:$('#stSound').checked, voice:$('#stVoice').checked, phoneRun:$('#stPhoneRun').checked});
     S = normalize(S); persist(); closeSheet(); renderAll(); toast('Đã lưu cài đặt.');
   },
   'reset-ask': () => { $('#resetBox').innerHTML = '<p class="small">Xóa hết nhật ký, số đo, giấc ngủ, việc cần làm trên máy này? Không hoàn tác được. Nên chép mã sao lưu trước.</p><div class="btn-row"><button class="btn small danger" data-act="reset-do">Xóa hết</button><button class="btn small ghost" data-act="sheet-close">Thôi</button></div>'; },
   'reset-do': () => { S = blank(); _sch = {}; _adapt = {}; try{ localStorage.removeItem(LS_KEY); }catch(e){} clipsDel(); closeSheet(); renderAll(); },
   'clips-clear': () => { clipsDel().then(() => { toast('Đã xóa hết đoạn ghi âm.'); closeSheet(); }); },
+  'bake-clear': () => { MediaDB.all('bake').then(rows => Promise.all(rows.map(r => MediaDB.del('bake', r[0])))).then(() => { toast('Đã xóa.'); closeSheet(); }).catch(() => {}); },
   'compact-now': () => { const n = compactOld(true); persist(); toast(n > 0 ? 'Đã gộp ' + n + ' bản ghi cũ.' : 'Chưa có gì cần gộp.'); closeSheet(); },
   'old-trim': () => { const lim = addDays(todayStr(), -366); ['logs','food','mindLog','focusLog','readLog'].forEach(k => { S[k] = S[k].filter(x => x.d >= lim); }); S.sleep.forEach(n => { if(n.d < lim){ delete n.ep; delete n.ev; delete n.hyp; } }); persist(); toast('Đã gọn dữ liệu cũ.'); closeSheet(); },
   'bk-copy': async () => {
