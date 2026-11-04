@@ -1,0 +1,87 @@
+NHỊP 21 – BẢN 2.4: chạy 5K tới marathon, tập luyện, thiền, giấc ngủ, dinh dưỡng, tập trung
+==================================================================================
+
+ĐÃ CÓ APP TRÊN GITHUB TỪ BẢN CŨ? (cập nhật, giữ nguyên dữ liệu)
+1. Vào github.com, mở repo nhip-21 > Add file > Upload files.
+2. Kéo 5 file trong thư mục này vào: index.html, sw.js, manifest.webmanifest,
+   icon-180.png, icon-512.png. GitHub sẽ ghi đè file cũ. Bấm Commit changes.
+3. Đợi 1–2 phút. Trên iPhone mở app Nhịp 21 từ Màn hình chính khi có mạng.
+   Nếu vẫn thấy bản cũ: vuốt đóng hẳn app rồi mở lại.
+   Dữ liệu cũ vẫn còn vì cùng địa chỉ web.
+
+CÀI LẦN ĐẦU TRÊN IPHONE HOẶC IPAD (cần địa chỉ web https, miễn phí qua GitHub Pages)
+iPhone và iPad không chạy được file HTML tải về: ứng dụng Tệp chỉ xem trước, không bấm được nút.
+1. Trên máy tính vào github.com, đăng nhập (hoặc tạo tài khoản miễn phí).
+2. Bấm dấu + ở góc trên > New repository. Tên: nhip-21. Chọn Public.
+   Tích "Add a README file". Bấm Create repository.
+3. Trong repo: Add file > Upload files. Kéo 5 file trong thư mục Nhip21 vào:
+   index.html, sw.js, manifest.webmanifest, icon-180.png, icon-512.png
+   (kéo các file, không kéo cả thư mục). Bấm Commit changes.
+4. Settings > Pages. Mục Branch chọn main, thư mục / (root), bấm Save.
+   Đợi 1–2 phút, tải lại trang sẽ thấy địa chỉ https://TÊN-CỦA-BẠN.github.io/nhip-21/
+5. Trên iPhone mở địa chỉ đó bằng Safari > nút Chia sẻ > Thêm vào Màn hình chính.
+   Luôn mở từ biểu tượng Nhịp 21 trên Màn hình chính (bản này giữ dữ liệu riêng).
+Repo Public nghĩa là ai có địa chỉ cũng mở được app, nhưng dữ liệu của bạn chỉ nằm trên máy bạn.
+
+LẦN ĐẦU MỞ APP TRÊN IPHONE: CHO PHÉP CÁC QUYỀN SAU KHI APP HỎI
+- Vị trí: để đo quãng đường khi chạy có GPS.
+- Micro và Chuyển động: để theo dõi giấc ngủ, báo thức đi 20 bước mới tắt.
+Khi chạy và khi ngủ: giữ app mở, không khóa màn hình (app tự tối màn hình khi ngủ). Nên cắm sạc khi ngủ.
+
+LẤY SỐ BƯỚC TỪ APP SỨC KHỎE: trong app, trang Hôm nay > Cách làm Phím tắt.
+NHẮC UỐNG NƯỚC, NHẮC GIỜ NGỦ: dùng Phím tắt > Tự động hóa > Thời gian trong ngày > Hiển thị thông báo
+(không tạo mục nào, không tốn bộ nhớ). Hướng dẫn chi tiết có trong app.
+
+CHUYỂN DỮ LIỆU GIỮA CÁC MÁY: nút bánh răng (Cài đặt) > Sao lưu và chuyển máy.
+Máy cũ: Chép mã sao lưu. Máy mới: dán mã, bấm Nhập dữ liệu. Mã từ bản cũ cũng nhập được.
+
+GIỌNG ĐỌC TIẾNG VIỆT
+iPhone, iPad: Cài đặt > Trợ năng > Nội dung được đọc > Giọng nói > Tiếng Việt > tải giọng Linh
+(bản Nâng cao nghe tự nhiên hơn). Đóng hẳn app rồi mở lại.
+Nếu không nghe tiếng: gạt nút im lặng lên, tăng âm lượng máy.
+
+TRÊN MÁY TÍNH: để thư mục Nhip21 cố định, chuột phải index.html > Mở bằng Chrome hoặc Safari.
+
+MỤC TIÊU CHẠY (mới ở bản 2.1)
+- Vận động › Chạy › "Đổi mục tiêu": chọn 5K, 10K, 21K, 42K (marathon) hoặc "Khỏe lâu dài" (không đua).
+- Mỗi lần đổi là một lộ trình mới bắt đầu từ tuần này, tính theo sức hiện tại. Nhật ký cũ giữ nguyên,
+  buổi đã chạy trong tuần này được tính luôn vào lộ trình mới. Mục tiêu cũ lưu ở "Các mục tiêu đã qua".
+- Sau ngày đua: 1 tuần hồi phục rồi tự chuyển sang duy trì (3 buổi chạy/tuần, cứ 4 tuần có 1 tuần nhẹ),
+  không bao giờ hết bài. Muốn thử sức tiếp thì chọn mục tiêu mới.
+- 42K: lộ trình 16–36 tuần tùy sức, chạy dài tối đa 32 km, giảm tải 2 tuần cuối, có buổi "5 km cuối pace đua".
+
+DÙNG LÂU DÀI
+- Mỗi tháng app tự gộp bản ghi cũ hơn 1 năm theo ngày (tổng phút thiền, tập trung, đọc, kcal vẫn đúng);
+  buổi chạy, buổi tập, số đo giữ nguyên. Không cần dọn tay.
+- Dữ liệu chỉ nằm trên máy: xóa icon app là mất. App nhắc sao lưu mỗi tháng: Cài đặt › Sao lưu › Tải file sao lưu,
+  cất vào app Tệp hoặc gửi qua Teams.
+
+KHÔNG CẦN GIỮ MÀN HÌNH SÁNG (mới ở bản 2.2)
+- Giấc ngủ: đeo đồng hồ Huawei khi ngủ, hoặc bật Lịch ngủ trong app Sức khỏe của iPhone.
+  Sáng chạy phím tắt "Nhịp 21" rồi bấm "Dán từ Sức khỏe". Không có gì thì tối chạm "Đi ngủ",
+  sáng mở app xác nhận giờ dậy (app đoán theo lúc bạn dùng điện thoại).
+- Báo thức: dùng báo thức iPhone (Sức khỏe › Ngủ › Lịch ngủ). Hướng dẫn trong Giấc ngủ › Dậy sớm.
+- Chạy: đo bằng đồng hồ (GT 3 có GPS), chạy xong bấm "Ghi lại buổi chạy". Nút đo GPS bằng điện thoại
+  đã ẩn; muốn dùng thì bật trong Cài đặt › Pin và màn hình.
+- Nhịp tim: phím tắt lấy nhịp tim nghỉ và HRV từ app Sức khỏe (đồng hồ Huawei đồng bộ sang),
+  hoặc nhập tay. Vùng tim tính theo nhịp tim dự trữ; nhịp nghỉ cao bất thường thì app khuyên tập nhẹ.
+- Âm thanh ngủ: lần đầu với một tổ hợp âm, app thu 2 phút rồi phát bằng trình phát nhạc của iPhone,
+  khóa máy vẫn kêu. Nếu iPhone đang gạt im lặng vẫn nghe được.
+
+HLV AI TỰ CHỈNH (mới ở bản 2.3)
+- Chạy xong bấm "Ghi lại buổi chạy": nhập km, thời gian, nhịp tim TB (nếu có). App hiện pace, km/h,
+  so với pace và vùng tim mục tiêu, chấm điểm, nhận xét "Làm tốt / Nên chỉnh / So với chính bạn".
+  Xem lại: Vận động › Chạy › Buổi chạy gần đây › Nhận xét. Có thêm biểu đồ km mỗi tuần và pace chạy dễ.
+- Bài tập: cuối buổi chạm Nhẹ / Vừa sức / Khó / Quá sức. Dừng sớm thì chọn lý do (Quá nặng, Hết thời gian,
+  Mệt từ trước, Đau). HLV tự chỉnh độ nặng (thời gian mỗi bài, thời gian nghỉ, bài dễ hơn) và thời lượng.
+- Ngày về muộn (sau 21 giờ): buổi tập tự thành bản ngắn, nhẹ. Có nút "Về muộn, mệt: bản 8 phút nhẹ".
+- Hai buổi chạy gần nhất quá khó hoặc thiếu nhiều: buổi chạy nhanh tuần đó tự đổi thành chạy dễ.
+- Xem HLV đang chỉnh gì: Vận động › Lịch › "HLV đang chỉnh cho bạn".
+
+BẢN 2.4
+- HLV AI cho bài tập thân hình: học riêng từng nhóm (Vai tay lưng, Mông đùi, Đốt mỡ, Bụng…).
+  Bài nào bạn bỏ qua 2 lần tự đổi sang bản dễ hơn (hoặc làm ngắn hơn); tập hết, thấy vừa sức vài lần thì trả lại bài gốc.
+- Giờ ngủ hợp với bạn: app tìm số giờ ngủ khiến bạn dậy thấy khỏe (từ cảm giác mỗi sáng), giờ dậy quen thuộc,
+  thời gian vào giấc, nợ ngủ, rồi gợi ý giờ thư giãn và lên giường. Ngủ muộn quá thì lùi sớm dần 15 phút mỗi tối.
+- Điều giúp bạn ngủ ngon: so sánh các đêm của chính bạn (ngày có tập, đủ bước, ngủ trước 23 giờ, thiền, đủ nước).
+- Hôm nay: thẻ "Gợi ý cho sức khỏe hôm nay" tối đa 3 việc nhỏ có ích nhất lúc đó.

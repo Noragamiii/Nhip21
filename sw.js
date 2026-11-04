@@ -1,5 +1,5 @@
-// Nhịp 21 bản 2.2: mở được khi không có mạng; có mạng thì luôn lấy bản mới nhất
-const C='nhip21-v4';
+// Nhịp 21 bản 2.4: mở được khi không có mạng; có mạng thì luôn lấy bản mới nhất
+const C='nhip21-v6';
 const A=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(A)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});

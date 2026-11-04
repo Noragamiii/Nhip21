@@ -781,7 +781,7 @@ details.plan .bk .field:first-child{margin-top:4px}
 <script>
 'use strict';
 /* ================= Nhịp 21 v2 — core ================= */
-const APP_VER = '2.2';
+const APP_VER = '2.4';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -866,7 +866,7 @@ const ICON = {
 /* ================= state + storage (offline: localStorage on this device) ================= */
 const LS_KEY = 'nhip21-v1';
 function blank(){ return {profile:null, logs:[], body:[], tests:[], swaps:{}, moves:{}, avail:{}, moods:[], journal:[], mindLog:[], focusLog:[], top3:null, parked:null,
-  todos:[], books:[], readLog:[], sleep:[], food:[], water:{}, health:{}, courses:{}, favFood:[], wake:null, meta:{}, updatedAt:0}; }
+  todos:[], books:[], readLog:[], sleep:[], food:[], water:{}, health:{}, courses:{}, favFood:[], wake:null, meta:{}, ai:{}, updatedAt:0}; }
 function newProfile(o){
   const p = Object.assign({created:todayStr(), level:'3-5', fiveK:null, raceDate:null, planStart:mondayOf(todayStr()), snackTarget:5, deskMin:45, voice:true, sound:true, strengthGoal:2, activeGoal:4,
     longDay:5, runDays:[1,3], focusMode:'pomo', calmSound:'pad', calmVol:0.6, voiceRate:0.95, breathVoice:true, voiceName:'', focusSound:'off',
@@ -899,7 +899,7 @@ function normalize(s){
   out.body = arr('body', 5000).sort(byD);
   out.tests = arr('tests', 1000).sort(byD);
   const obj = k => s && s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) ? JSON.parse(JSON.stringify(s[k])) : {};
-  out.meta = obj('meta'); out.swaps = obj('swaps'); out.moves = obj('moves'); out.avail = obj('avail'); out.water = obj('water'); out.health = obj('health'); out.courses = obj('courses');
+  out.meta = obj('meta'); out.ai = obj('ai'); out.swaps = obj('swaps'); out.moves = obj('moves'); out.avail = obj('avail'); out.water = obj('water'); out.health = obj('health'); out.courses = obj('courses');
   out.moods = arr('moods', 8000); out.journal = arr('journal', 3000); out.mindLog = arr('mindLog', 20000); out.focusLog = arr('focusLog', 20000);
   out.todos = arr('todos', 100000, 'id'); { const open = out.todos.filter(t => !t.done), done = out.todos.filter(t => t.done).slice(-3000); out.todos = open.concat(done); }
   out.books = arr('books', 2000, 'id'); out.readLog = arr('readLog', 20000); out.sleep = arr('sleep', 8000); out.food = arr('food', 40000);
@@ -960,6 +960,7 @@ const Backup = {
     byId('todos', true); byId('books', true);
     if(o.parked && (!S.parked || o.parked.d > S.parked.d)) S.parked = o.parked;
     if(o.wake && (!S.wake || newer)) S.wake = o.wake;
+    if(o.ai && o.ai.hist && (!S.ai || !S.ai.hist || newer)) S.ai = o.ai;
     S.meta = S.meta || {}; S.meta.bkAt = Math.max(S.meta.bkAt || 0, (o.meta && o.meta.bkAt) || 0);
     S = normalize(S); persistAll();
     return 'Đã nhập: ' + nL + ' buổi tập, ' + nB + ' số đo, ' + nT + ' lần kiểm tra, ' + nO + ' mục khác. Dữ liệu ở máy này vẫn được giữ.';
@@ -1053,7 +1054,7 @@ function ringSvg(frac, color, size, w){
 }
 function barsHtml(vals, labels, fmt, todayIdx){
   const mx = Math.max(1, ...vals);
-  return '<div class="bars7">' + vals.map((v, i) => '<div class="' + (i === todayIdx ? 'today' : '') + '"><b>' + (v ? (fmt ? fmt(v) : v) : '') + '</b><i style="height:' + Math.round(70 * v / mx) + '%"></i><span>' + labels[i] + '</span></div>').join('') + '</div>';
+  return '<div class="bars7">' + vals.map((v, i) => '<div class="' + (i === todayIdx ? 'today' : '') + '"><b>' + (v ? (fmt ? fmt(v, i) : v) : '') + '</b><i style="height:' + Math.round(70 * v / mx) + '%"></i><span>' + labels[i] + '</span></div>').join('') + '</div>';
 }
 /* actions: every button carries data-act, handlers live in ACT */
 const ACT = {
@@ -1977,6 +1978,12 @@ function weekPlan(m){
       if(behind >= 3 && left <= 6 && S.profile.raceDate) wk.notes.push('Đang chậm hơn lộ trình khoảng ' + num(behind) + ' km chạy dài khi chỉ còn ' + left + ' tuần. Cân nhắc lùi ngày đua, hoặc ngày đua chạy xen đi bộ cho an toàn.');
     }
   }
+  /* HLV AI: hai buổi gần nhất quá khó hoặc thiếu nhiều thì buổi chất lượng tuần này thành chạy dễ */
+  if(m === cur && typeof aiRunFatigue === 'function'){
+    const fz = aiRunFatigue(), dk0 = new Set(runLogs(m, addDays(m, 6)).map(l => l.planKey));
+    const q = wk.runs.find(r => r.type === 'quality' && r.pk !== 'easy' && !dk0.has(r.key));
+    if(fz && q){ const km = clamp(r05(q.km * 0.85), 3, 8); Object.assign(q, {title:'Chạy dễ (HLV giảm tải)', km, pk:'easy', z:2, effort:EFFORT.easy, detail:'Thay cho buổi nhanh: chạy thật nhẹ ' + num(km) + ' km, vẫn nói trọn câu được.', parts:easyParts(km - 0.6), softened:true}); wk.notes.push(fz); }
+  }
   /* trong tuần: chạy thêm ngoài kế hoạch thì rút bớt buổi dễ còn lại */
   if(m <= cur && m >= addDays(cur, -7)){
     const end = addDays(m, 6), logs = runLogs(m, end), plannedKm = sum(wk.runs, r => r.km);
@@ -2121,7 +2128,13 @@ function owedItems(){
 /* ================= buổi tập: xếp bài + trình phát ================= */
 /* ================= session builders ================= */
 const CFG = {tired:{w:30,r:25}, ok:{w:40,r:20}, strong:{w:45,r:15}};
-function variant(id, energy){ id = exPick(id); return (energy === 'tired' && EX[id].easy) ? exPick(EX[id].easy) : id; }
+function variant(id, energy){
+  id = exPick(id);
+  const hard = x => typeof aiHard === 'function' && aiHard(x);
+  if(energy === 'tired' && EX[id].easy) id = exPick(EX[id].easy);
+  for(let k = 0; k < 3 && hard(id) && EX[id].easy; k++) id = exPick(EX[id].easy);
+  return id;
+}
 function pickFormat(focus, fmt){
   const fms = FOCUS[focus].fm;
   if(fmt && fmt !== 'auto' && fms.includes(fmt)) return fmt;
@@ -2156,7 +2169,8 @@ function buildWorkout(focus, min, energy, opt){
     if(items.length && items[items.length-1].type === 'rest') items.pop();
     return pack('Giãn cơ ' + min + ' phút', focus, items, fmt);
   }
-  const c = CFG[energy] || CFG.ok, circ = circ0.map(id => variant(id, energy));
+  /* HLV AI: k < 1 thì mỗi bài ngắn hơn, nghỉ dài hơn; k > 1 thì ngược lại */
+  const k = clamp(opt.ai || 1, 0.6, 1.4), c0 = CFG[energy] || CFG.ok, r5 = x => Math.max(5, Math.round(x / 5) * 5), c = {w:r5(c0.w * Math.pow(k, 0.7)), r:r5(c0.r * Math.pow(k, -1.1))}, circ = circ0.map(id => variant(id, energy));
   const warm = min >= 10 ? WARMUPS[(dayOfYear() + v) % WARMUPS.length] : [];
   warm.forEach(id => W(id, 30, 'warm'));
   const coolSec = min >= 20 ? 125 : (min >= 10 ? 65 : 0);
@@ -2164,6 +2178,7 @@ function buildWorkout(focus, min, energy, opt){
   const sideOf = sec => Math.max(20, Math.round(sec * 0.6 / 5) * 5);
   const blockOf = (id, sec) => EX[id].side ? sideOf(sec) * 2 + 5 : sec;
   const addEx = (id, sec, extra) => {
+    if(typeof aiHard === 'function' && aiHard(id) && !EX[id].easy) sec = Math.max(20, Math.round(sec * 0.75 / 5) * 5);
     if(EX[id].side){ const s = sideOf(sec); W(id, s, 'main', 'bên trái', extra); Rr(5, 'Đổi bên'); W(id, s, 'main', 'bên phải', extra); }
     else W(id, sec, 'main', '', extra);
   };
@@ -2181,19 +2196,19 @@ function buildWorkout(focus, min, energy, opt){
       Rr(rs, end ? 'Nghỉ hết vòng' : 'Nghỉ'); t += rs; k++;
     }
   } else if(fmt === 'superset'){
-    const rest = energy === 'tired' ? 50 : energy === 'strong' ? 30 : 40; let stop = false;
+    const rest = r5((energy === 'tired' ? 50 : energy === 'strong' ? 30 : 40) * Math.pow(k, -1)), sw = r5(40 * Math.pow(k, 0.6)); let stop = false;
     for(let pi = 0; pi < 40 && !stop; pi++){
       const [a, b] = pairs[pi % pairs.length];
       for(let round = 1; round <= 3; round++){
-        const work = blockOf(a, 40) + 10 + blockOf(b, 40);
+        const work = blockOf(a, sw) + 10 + blockOf(b, sw);
         if(t + work > avail){ stop = true; break; }
-        addEx(a, 40, {set:round}); Rr(10, 'Sang bài thứ hai'); addEx(b, 40, {set:round}); t += work;
+        addEx(a, sw, {set:round}); Rr(10, 'Sang bài thứ hai'); addEx(b, sw, {set:round}); t += work;
         if(t + rest + 30 > avail){ stop = true; break; }
         Rr(rest, round < 3 ? 'Nghỉ giữa hiệp' : 'Nghỉ, đổi cặp bài'); t += rest;
       }
     }
   } else if(fmt === 'emom'){
-    const mins = Math.max(1, Math.floor(avail / 60)), sc = energy === 'tired' ? 0.7 : energy === 'strong' ? 1.25 : 1;
+    const mins = Math.max(1, Math.floor(avail / 60)), sc = (energy === 'tired' ? 0.7 : energy === 'strong' ? 1.25 : 1) * k;
     for(let k = 0; k < mins; k++){
       const id = circ[k % circ.length], r = EX[id].r ? Math.max(3, Math.round(EX[id].r * sc)) : 0;
       W(id, 60, 'main', '', {fmt:'emom', reps:r, minute:k+1, mins});
@@ -2206,8 +2221,8 @@ function buildWorkout(focus, min, energy, opt){
       if(b < nb - 1) Rr(60, 'Nghỉ giữa hai khối');
     }
   } else if(fmt === 'steady'){
-    const w = energy === 'tired' ? 75 : 90, r = energy === 'tired' ? 20 : 15; let k = 0;
-    while(t + w <= avail){ W(circ[k % circ.length], w, 'main'); t += w; k++; if(t + r + 30 > avail) break; Rr(r, 'Thở đều, đổi bài'); t += r; }
+    const w = r5((energy === 'tired' ? 75 : 90) * Math.pow(k, 0.6)), r = r5((energy === 'tired' ? 20 : 15) * Math.pow(k, -1)); let q = 0;
+    while(t + w <= avail){ W(circ[q % circ.length], w, 'main'); t += w; q++; if(t + r + 30 > avail) break; Rr(r, 'Thở đều, đổi bài'); t += r; }
   }
   if(coolSec){
     Rr(5, 'Chuyển sang giãn cơ');
@@ -2235,7 +2250,8 @@ function startSession(meta, items){
   if(!meta.keepSheet) closeSheet();
   const first = items.find(it => it.type === 'work');
   PL.meta = meta; PL.list = [{type:'prep', sec:5, label:'Chuẩn bị'}].concat(items);
-  PL.i = 0; PL.paused = false; PL.elapsed = 0; PL.lastTs = Date.now(); PL.finished = false; PL.confirming = false;
+  PL.i = 0; PL.paused = false; PL.elapsed = 0; PL.lastTs = Date.now(); PL.finished = false; PL.confirming = false; PL.skips = 0; PL.skipIds = [];
+  if(!meta.planMin) meta.planMin = Math.max(1, Math.round(items.reduce((s, x) => s + x.sec, 0) / 60));
   const pl = $('#player');
   pl.innerHTML = '<div class="pl-fill" id="plFill"></div>' +
     '<div class="pl-top"><div class="pl-seg" id="plSeg">' + PL.list.map(it => '<i style="flex:' + it.sec + ' 1 0"></i>').join('') + '</div>' +
@@ -2355,7 +2371,7 @@ function plDone(min){
       ? 'Vận động giữa giờ hôm nay: ' + snacksToday() + ' trên ' + p.snackTarget + ' lần.' + (FT.state === 'break' ? ' Giờ nghỉ vẫn đang chạy, hết giờ app sẽ báo.' : '')
       : 'Tuần này: ' + activeDays(r) + ' trên ' + p.activeGoal + ' ngày vận động, ' + strengthCount(r) + ' buổi sức mạnh.';
     main.innerHTML = '<div class="pl-done"><p class="pl-kind">Xong rồi</p><div class="pl-time">' + min + '<small>phút</small></div><p class="pl-cue">' + esc(PL.meta.title) + ' đã được ghi vào nhật ký.</p><p class="pl-cue">' + lines + '</p>' +
-      (weekStreak() ? '<p class="pl-cue">Chuỗi hiện tại: ' + weekStreak() + ' tuần đạt mục tiêu.</p>' : '') + '<div class="btn-col"><button class="pl-btn fill" data-act="pl-exit">Đóng</button></div></div>';
+      (weekStreak() ? '<p class="pl-cue">Chuỗi hiện tại: ' + weekStreak() + ' tuần đạt mục tiêu.</p>' : '') + (PL.meta.kind === 'workout' && aiCat(PL.meta.focus) ? plFeedbackHtml(true) : '') + '<div class="btn-col"><button class="pl-btn fill" data-act="pl-exit">Đóng</button></div></div>';
   }
   $('#plCtrl').hidden = true; $('#plLeft').textContent = '';
   if(!PL.meta.nolog) renderAll();
@@ -2381,12 +2397,12 @@ function plExit(){
 
 Object.assign(ACT, {
   'pl-pause': () => plTogglePause(),
-  'pl-next': () => { PL.paused = false; setPauseIcon(); plNext(); },
+  'pl-next': () => { const it = PL.list[PL.i]; if(it && it.type === 'work' && it.stage === 'main' && (PL.endAt - Date.now()) / 1000 > it.sec * 0.5){ PL.skips = (PL.skips || 0) + 1; if(it.id) (PL.skipIds = PL.skipIds || []).push(it.id); } PL.paused = false; setPauseIcon(); plNext(); },
   'pl-prev': () => plPrev(),
   'pl-close': () => plClose(),
   'pl-resume': () => plResume(),
   'pl-exit': () => plExit(),
-  'pl-save-exit': () => { saveSession(false); plExit(); toast('Đã lưu phần đã tập.'); },
+  'pl-save-exit': () => { const min = saveSession(false); if(PL.meta.kind === 'workout' && aiCat(PL.meta.focus)){ PL.finished = true; const main = $('#plMain'); main.innerHTML = '<div class="pl-done"><p class="pl-kind">Đã lưu ' + min + ' phút</p><h2 class="pl-name">Tập dở vẫn tốt hơn không tập.</h2>' + plFeedbackHtml(false) + '<div class="btn-col"><button class="pl-btn fill" data-act="pl-exit">Xong</button></div></div>'; return; } plExit(); toast('Đã lưu phần đã tập.'); },
   'pl-how': () => { const h = $('#plHow'); if(h){ h.hidden = !h.hidden; if(!h.hidden && !PL.paused) plTogglePause(); } },
   'pl-music': b => { const on = !(S.profile.workMusic && S.profile.workMusic !== 'off'); S.profile.workMusic = on ? (S.profile.lastWorkMusic || 'beat128') : 'off'; persist(); b.setAttribute('aria-pressed', String(on)); if(on){ ensureAudio(); Mix.play([{k:S.profile.workMusic, v:0.8}], 0.5); toast('Bật nhạc tập. Đổi kiểu nhạc trong Tâm trí › Âm thanh.'); } else Mix.stop(1); }
 });
@@ -3032,7 +3048,8 @@ function saveRunLog(e){
   if(after !== before) msg += ' Chạy dài tuần sau tự đổi thành ' + num(after) + ' km.';
   else if(r && e.km < r.km * 0.85) msg += ' Chưa đủ ' + num(r.km) + ' km cũng không sao, lịch tự điều chỉnh.';
   else if(!e.planKey && e.kind === 'run') msg += ' Đã cộng vào khối lượng tuần.';
-  renderAll(); toast(msg);
+  renderAll();
+  if(e.kind === 'run'){ openRunReview(e.id); toast(msg); } else toast(msg);
 }
 function openRunLog(key, kind){
   kind = kind || 'run';
@@ -3081,7 +3098,7 @@ Object.assign(ACT, {
     if(kind === 'other'){ const nm = ($('#rlName').value || '').trim() || 'Vận động khác'; addLog({kind:'other', title:nm.slice(0, 60), min:Math.round(sec / 60), d, t, rpe: rpe ? +rpe.dataset.v : null}); closeSheet(); renderAll(); toast('Đã ghi ' + Math.round(sec / 60) + ' phút ' + nm.toLowerCase() + '.'); return; }
     const key = kind === 'run' ? $('#rlKey').value : 'free', r = key !== 'free' ? findRun(key) : null;
     const e = {kind, title: r ? r.title : (kind === 'walk' ? 'Đi bộ' : 'Chạy thêm'), km:Math.round(km * 100) / 100, sec:sec || null, min: sec ? Math.max(1, Math.round(sec / 60)) : Math.round(km * (kind === 'walk' ? 12 : 7)), d, t, src:'manual', rpe: rpe ? +rpe.dataset.v : null, hr};
-    if(r) e.planKey = r.key;
+    if(r){ e.planKey = r.key; e.pk = r.pk; e.planKm = r.km; } else if(kind === 'run') e.pk = 'easy';
     closeSheet(); saveRunLog(e);
   },
   'run-indoor': b => { const r = findRun(b.dataset.key); if(!r) return; const m = clamp(Math.round(r.km * 6 / 5) * 5, 20, 40); const w = buildWorkout('trong-nha', m, UI.pick.energy, {variant:UI.variant}); startSession({kind:'workout', title:w.title + ' thay ' + r.title.toLowerCase(), focus:'trong-nha', planKey:r.key}, w.items); }
@@ -4046,7 +4063,7 @@ function wakePlan(){
   /* lùi bước khi 2 ngày gần nhất dậy trễ: giữ nguyên mức hiện tại */
   const days = Math.max(0, diffDays(w.start, todayStr())), hold = w.hold || 0;
   const steps = Math.max(0, Math.floor(days / every) - hold);
-  const today = Math.max(tg, cur - steps * step), sleepMin = Math.round((S.profile.sleepGoal || 7.5) * 60);
+  const today = Math.max(tg, cur - steps * step), sleepMin = typeof sleepNeed === 'function' ? sleepNeed().min : Math.round((S.profile.sleepGoal || 7.5) * 60);
   const bed = today - sleepMin - 15, wind = bed - 45;
   const left = Math.ceil((today - tg) / step) * every;
   return {wake:today, bed, wind, target:tg, cur, step, every, done: today <= tg, daysLeft: today <= tg ? 0 : left};
@@ -4119,7 +4136,7 @@ function loadClips(nightId){
   }).catch(() => {});
 }
 function sleepTonightHtml(){
-  const wp = wakePlan(), bed = wp ? minToHHMM(wp.bed) : S.profile.bedT, wk = wp ? minToHHMM(wp.wake) : S.profile.wakeT;
+  const B = bedtimeSuggest(), bed = minToHHMM(B.bed), wk = minToHHMM(B.wake);
   return '<section class="sec"><div class="sec-h"><h2>Đêm nay</h2><span class="aside">Đi ngủ ' + bed + ', dậy ' + wk + '</span></div><div class="card">' +
     '<p class="small">Không cần để máy mở cả đêm. Tối chạm <b>Đi ngủ</b> rồi khóa máy; sáng mở app xác nhận giờ dậy, hoặc dán số từ đồng hồ Huawei qua app Sức khỏe.</p>' +
     (S.meta && S.meta.bedMark && Date.now() - S.meta.bedMark < 14 * 3600000 ? '<p class="small muted" style="margin-top:6px">Đã ghi đi ngủ lúc ' + hhmm(S.meta.bedMark) + '.</p>' : '') +
@@ -4169,6 +4186,7 @@ function wakeHtml(){
       '<div class="btn-col"><button class="btn primary" data-act="wake-start">Bắt đầu chương trình</button></div></section>';
   }
   const base = tmin(wp ? minToHHMM(wp.wake) : (S.profile.wakeT || '06:30'));
+  a += bedtimeHtml();
   a += '<section class="sec"><div class="sec-h"><h2>Tính giờ ngủ theo chu kỳ</h2><span class="aside">Mỗi chu kỳ khoảng 90 phút, cộng 15 phút để chìm vào giấc</span></div><div class="card">' +
     '<div class="inline-form" style="margin-top:0"><label class="small" style="align-self:center">Muốn dậy lúc</label><input type="time" id="cyWake" value="' + minToHHMM(base) + '" style="max-width:150px"></div><div id="cyOut">' + cyclesHtml(base) + '</div>' +
     '<p class="small muted" style="margin-top:8px">Vì sao: dậy giữa lúc ngủ sâu thì lờ đờ, dậy cuối chu kỳ dễ hơn. Nhưng chu kỳ mỗi người dài 70–120 phút, nên quan trọng nhất vẫn là ngủ đủ (5 chu kỳ ≈ 7,5 tiếng) và giờ dậy cố định. Đồng hồ Huawei có báo thức thông minh (gọi dậy lúc ngủ nông) nếu bạn đeo khi ngủ.</p>' +
@@ -4188,7 +4206,7 @@ function cyclesHtml(w){ return '<div class="stat3" style="margin-top:8px">' + cy
 /* lời khuyên theo xu hướng 7 ngày */
 function sleepAdviceHtml(L, avg, debt, sdb, bm, wm){
   if(L.length < 3) return '';
-  const goal = (S.profile.sleepGoal || 7.5) * 60, tips = [];
+  const goal = sleepNeed().min, tips = [];
   if(avg < goal - 30) tips.push(['Ngủ thiếu đều đặn', 'Trung bình ' + fmtHm(avg) + ', thiếu khoảng ' + fmtHm(goal - avg) + ' mỗi đêm. Lên giường sớm hơn 20–30 phút trong 1 tuần, giữ nguyên giờ dậy.']);
   if(sdb > 60) tips.push(['Giờ ngủ thất thường', 'Giờ ngủ lệch ±' + Math.round(sdb) + ' phút. Đều giờ quan trọng ngang ngủ đủ: chọn một giờ lên giường cố định, kể cả cuối tuần (lệch không quá 1 tiếng).']);
   const late = bm.filter(m => m > 24 * 60 + 30).length; if(late >= 3) tips.push(['Hay ngủ sau 0 giờ 30', late + '/7 đêm. Đặt nhắc thư giãn lúc 22 giờ 15 trong Phím tắt, sạc điện thoại ngoài phòng ngủ.']);
@@ -4214,7 +4232,7 @@ function trendHtml(){
     '<div class="stat3" style="margin-top:10px"><div><b>' + fmtHm(debt) + '</b><span>nợ ngủ 7 ngày</span></div><div><b>±' + Math.round(sd(bm)) + ' ph</b><span>độ lệch giờ ngủ</span></div><div><b>' + (last7.length ? Math.round(sum(last7, x => x.score || 0) / last7.length) : '–') + '</b><span>điểm trung bình</span></div></div></section>';
   const ex = new Set(S.logs.map(l => l.d)), A = S.sleep.filter(x => ex.has(addDays(x.d, -1))), B = S.sleep.filter(x => !ex.has(addDays(x.d, -1)));
   if(A.length >= 3 && B.length >= 3) b += '<p class="note small sec">Đêm sau ngày có tập: điểm ngủ trung bình ' + Math.round(sum(A, x => x.score) / A.length) + '; đêm sau ngày không tập: ' + Math.round(sum(B, x => x.score) / B.length) + '.</p>';
-  b += sleepAdviceHtml(last7, avg, debt, sd(bm), bm, wm) + hrTrendHtml();
+  b += sleepAdviceHtml(last7, avg, debt, sd(bm), bm, wm) + bedtimeHtml() + sleepFactorsHtml() + hrTrendHtml();
   b += '<section class="sec"><div class="sec-h"><h2>Nhật ký các đêm</h2></div><div class="list">' + S.sleep.slice(-10).reverse().map(n => '<div class="item"><div><h3>' + viDate(n.d) + ' · ' + n.score + ' điểm</h3><p>' + fmtHm(n.tst) + ' ngủ, ' + hhmm(n.on || n.start) + '–' + hhmm(n.end) + (n.feel ? ', dậy thấy ' + ['','rất mệt','mệt','bình thường','khỏe','rất khỏe'][n.feel] : '') + '</p></div><button class="btn small ghost" data-act="sl-open" data-id="' + n.id + '">Xem</button></div>').join('') + '</div></section>';
   return cols(a, b);
 }
@@ -4669,12 +4687,12 @@ function slotHtml(it, opts){
 function workCardHtml(it){
   const done = isDone(it), cat = itemCat(it);
   if(it.kind === 'test') return '<div class="run' + (done ? ' is-done' : '') + '"><div class="run-top"><span class="tag t-test">Kiểm tra</span><span class="run-km big">15 phút</span></div><h3>Kiểm tra thể lực tháng</h3><p class="small">Đầu tháng đo lại sức: chống đẩy, squat, plank, treo xà, nhảy dây. So với tháng trước để thấy rõ mình tiến bộ.</p><div class="run-act">' + (done ? OK : '<button class="btn small primary" data-act="open-test" data-key="' + it.key + '">Làm bài kiểm tra</button>') + '</div></div>';
-  const F = FOCUS[it.focus], w = buildWorkout(it.focus, it.min, UI.pick.energy, {variant:UI.variant}), ids = [];
+  const F = FOCUS[it.focus], P = aiPlan(it), w = buildWorkout(it.focus, P.min, P.energy, {variant:UI.variant, ai:P.k}), ids = [];
   w.items.forEach(x => { if(x.type === 'work' && x.stage === 'main' && !ids.includes(x.id)) ids.push(x.id); });
-  return '<div class="run' + (done ? ' is-done' : '') + '"><div class="run-top"><span class="tag t-' + cat + '">' + CATN[cat] + '</span><span class="run-km big">' + it.min + ' phút</span></div>' +
-    '<h3>' + esc(F.n) + (it.addon ? ', sau buổi chạy' : '') + '</h3><p class="small">' + esc(F.d) + '</p>' +
+  return '<div class="run' + (done ? ' is-done' : '') + '"><div class="run-top"><span class="tag t-' + cat + '">' + CATN[cat] + '</span><span class="run-km big">' + P.min + (P.min !== it.min ? '<small class="muted">/' + it.min + '</small>' : '') + ' phút</span></div>' +
+    '<h3>' + esc(F.n) + (it.addon ? ', sau buổi chạy' : '') + '</h3><p class="small">' + esc(F.d) + '</p>' + (!done && P.why.length ? '<p class="adapt">HLV chỉnh: ' + esc(P.why.join('; ')) + '.</p>' : '') +
     '<div class="row" style="gap:6px;margin-top:10px;overflow-x:auto">' + ids.slice(0, 6).map(id => '<button class="fig" data-act="ex-open" data-id="' + id + '" style="width:66px;height:56px;flex:none;border:0;padding:0;cursor:pointer" aria-label="' + esc(EX[id].n) + '">' + Anim.svg(id, false) + '</button>').join('') + '</div>' +
-    '<div class="run-act">' + (done ? OK : '<button class="btn small primary" data-act="slot-start" data-key="' + it.key + '">' + ICON.playS + ' Bắt đầu</button>') + '</div></div>';
+    '<div class="run-act">' + (done ? OK : '<button class="btn small primary" data-act="slot-start" data-key="' + it.key + '">' + ICON.playS + ' Bắt đầu</button>' + (P.min > 8 ? '<button class="btn small ghost" data-act="slot-lite" data-key="' + it.key + '">Về muộn, mệt: bản 8 phút nhẹ</button>' : '')) + '</div></div>';
 }
 /* ===== Hôm nay ===== */
 function healthToday(){ return S.health[todayStr()] || null; }
@@ -4710,7 +4728,7 @@ function todayMindHtml(){
 function eveningHtml(){
   const hr = new Date().getHours(); if(hr < 20 && hr > 3) return '';
   const wp = wakePlan();
-  return '<section class="sec"><div class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h3 style="font-size:1.1rem">Chuẩn bị ngủ</h3><p class="small muted" style="margin-top:4px">' + (wp ? 'Lên giường lúc ' + minToHHMM(wp.bed) + ' để dậy ' + minToHHMM(wp.wake) + ' mà vẫn đủ giấc.' : 'Tắt màn hình 30 phút trước khi ngủ, phòng tối và mát.') + '</p><div class="btn-row"><button class="btn primary" data-act="sl-bed">' + ICON.moon + ' Đi ngủ</button><button class="btn ghost" data-act="go" data-v="giac-ngu" data-s="ru-ngu">Âm thanh, truyện ngủ</button></div></div></div></section>';
+  return '<section class="sec"><div class="sleep-hero">' + starsSvg() + '<div style="position:relative"><h3 style="font-size:1.1rem">Chuẩn bị ngủ</h3>' + bedtimeHtml(true) + '<div class="btn-row"><button class="btn primary" data-act="sl-bed">' + ICON.moon + ' Đi ngủ</button><button class="btn ghost" data-act="go" data-v="giac-ngu" data-s="ru-ngu">Âm thanh, truyện ngủ</button></div></div></div></section>';
 }
 function healthCardHtml(){
   const h = healthToday() || {}, p = S.profile, rh = h.rhr || (S.health[addDays(todayStr(), -1)] || {}).rhr;
@@ -4735,7 +4753,7 @@ RENDER['hom-nay'] = function(){
   if(!S.logs.some(l => l.d === y) && !S.logs.some(l => l.d === t) && p.created < y)
     a += '<div class="sec note gold"><b>Hôm qua nghỉ rồi, hôm nay đừng nghỉ tiếp.</b> Không bỏ lỡ hai ngày liền là đủ để giữ thói quen. Chỉ cần 2 phút. <div class="btn-row"><button class="btn small gold" data-act="quick2">Tập 2 phút ngay</button></div></div>';
   a += morningCardHtml() + readinessHtml() + todayPlanHtml() + todayTodoHtml();
-  let b = eveningHtml() + '<section class="sec first">' + waterCardHtml(t, true) + '</section>' + todayFoodMini() + todayMindHtml() + healthCardHtml() + weekMetersHtml() + backupNudgeHtml();
+  let b = eveningHtml() + healthTipsHtml() + '<section class="sec first">' + waterCardHtml(t, true) + '</section>' + todayFoodMini() + todayMindHtml() + healthCardHtml() + weekMetersHtml() + backupNudgeHtml();
   el.innerHTML = cols(a, b);
 };
 function todayFoodMini(){
@@ -4764,7 +4782,7 @@ function weekHtml(){
     (sc.optional.length ? '<section class="sec"><div class="sec-h"><h2>Nếu có thêm thời gian</h2></div><div class="list pad">' + sc.optional.map(it => slotHtml(it)).join('') + '</div></section>' : '');
   const right = '<section class="sec first"><div class="sec-h"><h2>' + PHASE[wk.cut ? 'cut' : wk.phase] + '</h2></div><p class="small">' + PHASE_NOTE[wk.cut ? 'cut' : wk.phase] + '</p>' +
     '<div class="nums" style="margin-top:14px"><div><div class="v">' + num(r1(runKm)) + '</div><div class="k">km chạy kế hoạch</div></div><div><div class="v">' + num(r1(kmIn([m, addDays(m, 6)]))) + '</div><div class="k">km đã chạy thật</div></div><div><div class="v">' + cnt.str[0] + '/' + cnt.str[1] + '</div><div class="k">buổi sức mạnh</div></div><div><div class="v">' + cnt.burn[0] + '/' + cnt.burn[1] + '</div><div class="k">đốt mỡ và core</div></div></div></section>' +
-    legendHtml() +
+    legendHtml() + aiCardHtml() +
     '<section class="sec"><ul class="tips"><li><b>Lịch tự điều chỉnh</b>Chạy ít hơn kế hoạch (ví dụ 7 trên 9 km) thì tuần sau quãng chạy dài tăng từ từ từ mức bạn chạy được. Chạy thêm ngoài lịch thì buổi dễ còn lại trong tuần tự rút bớt.</li>' +
     '<li><b>Rảnh hôm nào chạy hôm đó</b>Chạm “Dời, đổi, ghi thêm” để chuyển một buổi sang ngày khác, hoặc ghi buổi chạy thêm.</li>' +
     '<li><b>Vì sao xếp như vậy</b>Ba buổi chạy cho mục tiêu ' + esc(goalOf().s) + ', hai buổi tạ cho cơ thể cân đối, một buổi đốt mỡ và core, một ngày phục hồi sau chạy dài.</li></ul>' +
@@ -4826,7 +4844,8 @@ function runSegHtml(){
     '<dl class="zones" style="margin-top:10px"><div><dt>Chạy dễ, chạy dài</dt><dd>' + (pc ? '<b>' + fmtPace(pc.easy[0]) + '–' + fmtPace(pc.easy[1]) + '</b> /km · ' : '') + zoneText(2) + '</dd></div><div><dt>Pace đua ' + (G.km ? G.n : '10 km') + '</dt><dd>' + (pc ? '<b>' + fmtPace(pc.hm) + '</b> /km · ' : '') + zoneText(3) + '</dd></div><div><dt>Tempo, fartlek</dt><dd>' + (pc ? '<b>' + fmtPace(pc.tempo) + '</b> /km · ' : '') + zoneText(4) + '</dd></div><div><dt>Biến tốc, chạy dốc</dt><dd>' + (pc ? '<b>' + fmtPace(pc.inter) + '</b> /km · ' : '') + zoneText(5) + '</dd></div></dl>' +
     '<p class="small muted" style="margin-top:8px">Khoảng 80% thời gian chạy nên ở vùng 2: chậm tới mức nói trọn câu được. Đây là vùng xây sức bền và đốt mỡ tốt nhất. Trời nóng ẩm thì chậm hơn 10–20 giây mỗi km là bình thường.</p></div></section>';
   const runs = S.logs.filter(l => l.kind === 'run' || l.kind === 'walk').slice(-10).reverse();
-  b += '<section class="sec"><div class="sec-h"><h2>Buổi chạy gần đây</h2></div>' + (runs.length ? '<ul class="hist">' + runs.map(l => '<li><span class="h-d">' + viDate(l.d) + '</span><span>' + esc(l.title) + (l.planKey ? '' : ' <span class="tag t-extra">ngoài lịch</span>') + '</span><span class="h-v">' + num(r1(l.km)) + ' km' + (l.sec ? ' · ' + fmtPace(l.sec / l.km) : '') + '</span><button class="x" data-act="del-log" data-id="' + esc(l.id) + '" aria-label="Xóa">×</button></li>').join('') + '</ul>' : '<p class="empty">Chưa có buổi chạy nào.</p>') + '</section>';
+  b += runProgressHtml();
+  b += '<section class="sec"><div class="sec-h"><h2>Buổi chạy gần đây</h2><span class="aside">Chạm Nhận xét để xem pace, nhịp tim, HLV đánh giá</span></div>' + (runs.length ? '<ul class="hist">' + runs.map(l => '<li><span class="h-d">' + viDate(l.d) + '</span><span>' + esc(l.title) + (l.planKey ? '' : ' <span class="tag t-extra">ngoài lịch</span>') + (l.kind === 'run' && l.sec ? ' <span class="tag t-run">' + runReview(l).verdict + '</span>' : '') + '</span><span class="h-v">' + num(r1(l.km)) + ' km' + (l.sec ? ' · ' + fmtDur(l.sec) + ' · ' + fmtPace(l.sec / l.km) + '/km' : '') + '</span>' + (l.kind === 'run' ? '<button class="btn small ghost" data-act="run-review" data-id="' + esc(l.id) + '">Nhận xét</button>' : '<button class="x" data-act="del-log" data-id="' + esc(l.id) + '" aria-label="Xóa">×</button>') + '</li>').join('') + '</ul>' : '<p class="empty">Chưa có buổi chạy nào.</p>') + '</section>';
   const rows = P.weeks.map(x => { const dn = x.runs.filter(q => dk.has(q.key)).length, cls = x.n === w ? 'cur' : (x.n < w ? 'past' : '');
     return '<tr class="' + cls + '"><th scope="row">' + x.n + '</th><td>' + PHASE_SHORT[x.cut ? 'cut' : x.phase] + '</td><td>' + num(x.runs[0].km) + '</td><td>' + esc(x.runs[1].title) + '</td><td><b>' + num(x.long) + '</b></td><td class="done-m">' + '●'.repeat(dn) + '○'.repeat(Math.max(0, 3 - dn)) + '</td></tr>'; }).join('');
   b += '<section class="sec"><details class="plan"' + (UI.planOpen ? ' open' : '') + '><summary><h2>Toàn bộ ' + P.N + ' tuần</h2><span class="aside">Chạy dài tăng dần tới ' + num(P.peak) + ' km</span></summary><div class="tbl-wrap"><table><thead><tr><th>Tuần</th><th>Giai đoạn</th><th>Dễ</th><th>Chất lượng</th><th>Dài</th><th>Xong</th></tr></thead><tbody>' + rows + '</tbody></table></div><p class="small muted" style="padding:0 16px 14px">Đây là lộ trình gốc. Tuần này và tuần sau tự điều chỉnh theo quãng bạn chạy thật. ' + (G.km ? 'Sau ngày đua lịch tự chuyển sang duy trì, không bao giờ hết bài.' : 'Sau tuần ' + P.N + ' lịch tự chuyển sang duy trì, không bao giờ hết bài.') + '</p></details></section>' + goalHistoryHtml();
@@ -4852,7 +4871,7 @@ function resolveFocus(){
   return autoFocus();
 }
 function pickerHtml(){
-  const pk = UI.pick, [focus, why] = resolveFocus(), w = buildWorkout(focus, pk.min, pk.energy, {variant:UI.variant, format:pk.format});
+  const pk = UI.pick, [focus, why] = resolveFocus(), w = buildWorkout(focus, pk.min, pk.energy, {variant:UI.variant, format:pk.format, ai:aiLvlF(focus)});
   const fms = focus === 'mini' ? [] : FOCUS[focus].fm, ids = [];
   w.items.forEach(x => { if(x.type === 'work' && x.stage === 'main' && !ids.includes(x.id)) ids.push(x.id); });
   return '<section id="picker"><div class="sec-h"><h2>Tập ngay với thời gian bạn có</h2></div>' +
@@ -4969,10 +4988,10 @@ RENDER['tam-tri'] = function(){
 Object.assign(ACT, {
   'pick': b => { const k = b.dataset.k; let v = b.dataset.v; if(k === 'min') v = +v; UI.pick[k] = v; if(k === 'focus') UI.pick.format = 'auto'; rerender(); },
   'shuffle': () => { UI.variant++; rerender(); },
-  'start-today': () => { const [f] = resolveFocus(); const w = buildWorkout(f, UI.pick.min, UI.pick.energy, {variant:UI.variant, format:UI.pick.format}); startSession({kind:'workout', title:w.title, focus:f}, w.items); },
+  'start-today': () => { const [f] = resolveFocus(); const w = buildWorkout(f, UI.pick.min, UI.pick.energy, {variant:UI.variant, format:UI.pick.format, ai:aiLvlF(f)}); startSession({kind:'workout', title:w.title, focus:f}, w.items); },
   'quick2': () => { const w = buildWorkout(UI.pick.place === 'office' ? 'van-phong' : 'mini', 2, 'ok', {variant:UI.variant}); startSession({kind:'workout', title:w.title, focus:'mini'}, w.items); },
-  'start-focus': b => { const w = buildWorkout(b.dataset.f, +b.dataset.m, UI.pick.energy, {variant:UI.variant}); startSession({kind:'workout', title:w.title, focus:b.dataset.f}, w.items); },
-  'slot-start': b => { const it = findItem(b.dataset.key); if(!it) return; if(it.kind === 'test'){ openTest(it.key); return; } const w = buildWorkout(it.focus, it.min, UI.pick.energy, {variant:UI.variant}); startSession({kind:'workout', title:w.title, focus:it.focus, slot:it.key}, w.items); },
+  'start-focus': b => { const w = buildWorkout(b.dataset.f, +b.dataset.m, UI.pick.energy, {variant:UI.variant, ai:aiLvlF(b.dataset.f)}); startSession({kind:'workout', title:w.title, focus:b.dataset.f}, w.items); },
+  'slot-start': b => { const it = findItem(b.dataset.key); if(!it) return; if(it.kind === 'test'){ openTest(it.key); return; } aiStartSlot(it); },
   'ex-open': b => openEx(b.dataset.id),
   'ex-try': b => { const id = b.dataset.id, E = EX[id], items = E.side ? [{type:'work', id, sec:30, stage:'main', side:'bên trái'}, {type:'rest', sec:5, label:'Đổi bên'}, {type:'work', id, sec:30, stage:'main', side:'bên phải'}] : [{type:'work', id, sec:40, stage:'main', side:''}]; startSession({kind:'workout', title:E.n, focus:'thu', nolog:false}, items); },
   'ex-g': b => { UI.exG = b.dataset.v; rerender(); },
@@ -4987,7 +5006,7 @@ Object.assign(ACT, {
   'swap': b => { const m = b.dataset.m, a = +b.dataset.a, c = +b.dataset.b; const perm = (S.swaps[m] || [0,1,2,3,4,5,6]).slice(); const t = perm[a]; perm[a] = perm[c]; perm[c] = t; if(perm.every((x, i) => x === i)) delete S.swaps[m]; else S.swaps[m] = perm; persist(); closeSheet(); renderAll(); toast('Đã đổi lịch hai ngày.'); },
   'unswap': b => { delete S.swaps[b.dataset.m]; delete S.moves[b.dataset.m]; persist(); closeSheet(); renderAll(); toast('Lịch tuần đã về như cũ.'); },
   'set-5k': () => { const raw = $('#fiveIn').value.trim(); if(!raw){ S.profile.fiveK = null; persist(); renderAll(); return; } const v = parseTime(raw); if(!v){ toast('Thời gian 5 km cần trong khoảng 15–60 phút. Gõ số liền: 3230 là 32:30.'); return; } S.profile.fiveK = v; persist(); renderAll(); toast('Đã tính pace cho từng buổi: chạy dễ ' + paceText(paces(v), 'easy') + '.'); },
-  'del-log': b => { const id = b.dataset.id, e = S.logs.find(l => l.id === id); if(!e) return; S.logs = S.logs.filter(l => l.id !== id); persist(); renderAll(); toast('Đã xóa “' + e.title + '”.', 'Hoàn tác', () => { S.logs.push(e); S.logs.sort((a, c) => a.t - c.t); persist(); renderAll(); }); },
+  'del-log': b => { closeSheet(); const id = b.dataset.id, e = S.logs.find(l => l.id === id); if(!e) return; S.logs = S.logs.filter(l => l.id !== id); persist(); renderAll(); toast('Đã xóa “' + e.title + '”.', 'Hoàn tác', () => { S.logs.push(e); S.logs.sort((a, c) => a.t - c.t); persist(); renderAll(); }); },
   'topic': b => { UI.topic = UI.topic === b.dataset.v ? null : b.dataset.v; renderAll(); if(UI.topic) setTimeout(() => { const t = $('#topicBox'); if(t) t.scrollIntoView({block:'start', behavior:'smooth'}); }, 50); },
   'td-quick': () => { const i = $('#tdQuick'), v = (i.value || '').trim(); if(!v) return; addTodo(v, {due:todayStr()}); rerender(); toast('Đã thêm việc hôm nay.'); },
   'snd-def': b => { S.profile.calmSound = b.dataset.v; persist(); b.parentNode.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === b))); },
@@ -5085,6 +5104,8 @@ const TUTOR = [
   {k:['so buoc','buoc chan','suc khoe iphone','apple health','huawei'], a:'Web app không đọc thẳng được app Sức khỏe, nên dùng Phím tắt iPhone: tạo một lần, sau đó mỗi ngày chạy Phím tắt rồi bấm “Dán dữ liệu Sức khỏe” ở trang Hôm nay. Đồng hồ Huawei: bật chia sẻ dữ liệu từ app Huawei Health sang Apple Sức khỏe trước.', act:[A('Cách làm Phím tắt','hk-guide')]},
   {k:['gps','chay co huong dan','do quang duong','pace moi km'], a:'Bấm “Chạy có hướng dẫn” trên buổi chạy: app đo quãng đường bằng GPS, đọc pace mỗi km, báo từng đoạn khởi động, chạy nhanh, hồi sức. Giữ app mở, đừng khóa màn hình vì iPhone dừng GPS khi khóa máy.', act:[A('Mở Chạy','go',{v:'van-dong',s:'chay'})]},
   {k:['khong co xa','khong co ta','thieu dung cu','dung cu'], a:'Trong Vận động › Bài tập, bỏ chọn dụng cụ bạn không có. App tự thay: hít xà thành kéo người dưới bàn, tạ thành bài tay không hoặc dùng ghế, dây nhảy thành bật nhảy.', act:[A('Mở Bài tập','go',{v:'van-dong',s:'bai-tap'})]},
+  {k:['qua nang','nang qua','khong tap het','tap khong noi','ve muon','ve tre','lam muon','tang ca','khong du suc','bai kho qua','qua kho'], a:() => 'HLV tự chỉnh theo bạn: cuối mỗi buổi chạm Nhẹ / Vừa sức / Khó / Quá sức, hoặc nếu dừng sớm thì chọn lý do. Quá nặng: buổi sau mỗi bài ngắn hơn, nghỉ dài hơn, đổi bài dễ hơn. Hết thời gian: HLV học số phút bạn thật sự có. Sau 21 giờ buổi tập tự thành bản ngắn, nhẹ, không bật nhảy. Hiện tại độ nặng sức mạnh ' + Math.round(aiLvl('str') * 100) + '%, đốt mỡ ' + Math.round(aiLvl('burn') * 100) + '%.', act:[A('Xem lịch hôm nay','go',{v:'hom-nay'})]},
+  {k:['nhan xet','chay the nao','chay tot khong','pace','van toc','toc do chay','danh gia buoi chay'], a:() => { const l = S.logs.filter(x => x.kind === 'run').slice(-1)[0]; if(!l) return 'Chưa có buổi chạy nào. Chạy xong bấm Ghi lại, nhập km và thời gian, HLV sẽ nhận xét.'; const R = runReview(l); return 'Buổi gần nhất ' + viDate(l.d) + ': ' + num(r1(l.km)) + ' km' + (R.pace ? ', pace ' + fmtPace(R.pace) + '/km' : '') + '. Đánh giá: ' + R.verdict + ' (' + R.score + ' điểm). ' + R.good.concat(R.fix).slice(0, 2).join(' '); }, act:[A('Xem các buổi chạy','go',{v:'van-dong',s:'chay'})]},
   {k:['cam on','thanks','thank'], a:'Không có gì! Cứ đều đặn từng chút là tới đích.'}
 ];
 const Tutor = {
@@ -5480,6 +5501,283 @@ function bgStop(auto){
 }
 async function bgPrune(keep){ try{ const rows = await MediaDB.all('bake'); rows.sort((a, b) => (a[1] && a[1].t || 0) - (b[1] && b[1].t || 0)); const extra = rows.filter(r => r[0] !== keep).slice(0, Math.max(0, rows.length - 6)); for(const r of extra) await MediaDB.del('bake', r[0]); }catch(e){} }
 Object.assign(ACT, { 'bg-stop': () => bgStop(false) });
+
+/* ================= HLV AI: học từ từng buổi bạn tập, tự chỉnh độ nặng, thời lượng, buổi chạy =================
+   Không gửi dữ liệu đi đâu. Mỗi buổi là một "tín hiệu": tập hết hay bỏ dở, vì sao dừng, cảm giác nặng nhẹ (RPE),
+   giờ trong ngày. HLV cập nhật mức cường độ riêng cho từng nhóm bài (sức mạnh, đốt mỡ, phục hồi) và
+   thời lượng bạn thật sự có vào ngày thường / ngày về muộn, rồi dùng nó để xếp buổi sau. */
+const AI_CATS = {str:'Sức mạnh', burn:'Đốt mỡ và core', rec:'Phục hồi'};
+const WHY = {heavy:'Quá nặng', time:'Hết thời gian', tired:'Mệt từ trước', pain:'Đau, mỏi khớp', other:'Lý do khác'};
+const RPE_L = [[3,'Nhẹ'],[5,'Vừa sức'],[7,'Khó'],[9,'Quá sức']];
+function AIS(){ if(!S.ai || typeof S.ai !== 'object') S.ai = {}; const a = S.ai; a.lvl = a.lvl || {str:1, burn:1, rec:1}; a.hist = a.hist || []; a.log = a.log || []; return a; }
+function aiCat(focus){ const F = FOCUS[focus]; return F && AI_CATS[F.cat] ? F.cat : null; }
+function aiLvl(cat){ const a = AIS(); return cat && a.lvl[cat] ? a.lvl[cat] : 1; }
+/* riêng từng nhóm bài (vd. Vai tay lưng khác Mông đùi): mức chung của loại + độ lệch học riêng */
+function aiLvlF(focus){ const cat = aiCat(focus); if(!cat) return 1; const fo = (AIS().fo || {})[focus] || 0; return Math.round(clamp(aiLvl(cat) + fo, 0.6, 1.4) * 100) / 100; }
+/* bài hay bị bỏ qua: tự đổi sang bản dễ hơn */
+function aiHard(id){ const s = AIS().skip || {}; return (s[id] || 0) >= 2; }
+function isLate(h){ h = h == null ? new Date().getHours() : h; return h >= 21 || h < 5; }
+function median(a){ if(!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
+function aiNote(txt){ const a = AIS(); a.log.push({t:Date.now(), d:todayStr(), txt}); a.log = a.log.slice(-30); }
+
+/* thời lượng bạn thật sự có: học riêng cho ngày về muộn và ngày thường */
+function aiTimeCap(late){
+  const H = AIS().hist.filter(h => !!h.late === !!late && h.done > 0).slice(-8);
+  const short = H.filter(h => h.why === 'time' || h.why === 'tired');
+  if(short.length >= 2) return Math.max(5, Math.round(median(short.map(h => h.done))));
+  return late ? 10 : null;
+}
+/* kế hoạch cho một buổi trong lịch: thời lượng, mức sức, lý do */
+function aiPlan(it, force){
+  const cat = aiCat(it.focus), lvl = aiLvlF(it.focus), late = isLate(), why = [];
+  let min = it.min, energy = UI.pick.energy === 'tired' ? 'tired' : (lvl < 0.85 ? 'tired' : lvl > 1.2 ? 'strong' : 'ok');
+  const rd = typeof readiness === 'function' ? readiness() : null;
+  if(force === 'lite' || (late && it.min > 12)){
+    const cap = force === 'lite' ? Math.min(8, aiTimeCap(true) || 8) : (aiTimeCap(true) || 10);
+    if(cap < min){ min = Math.max(5, Math.min(min, cap)); why.push(late ? 'đã muộn, bản ngắn ' + min + ' phút cho dễ ngủ' : 'bản ngắn ' + min + ' phút'); }
+    energy = 'tired';
+  } else {
+    const cap = aiTimeCap(false);
+    if(cap && cap < min - 3){ min = Math.max(8, cap + 3); why.push('mấy buổi gần đây bạn thường có khoảng ' + cap + ' phút'); }
+  }
+  if(rd && rd.lvl === 'low'){ energy = 'tired'; min = Math.min(min, 15); why.push('nhịp tim nghỉ cao, cơ thể chưa hồi phục'); }
+  if(cat && lvl < 0.95) why.push('nhẹ hơn vì vài buổi trước hơi quá sức');
+  if(cat && lvl > 1.08 && energy !== 'tired') why.push('nặng hơn vì bạn đang tập khỏe lên');
+  const k = force === 'lite' || energy === 'tired' ? Math.min(lvl, 0.85) : lvl;
+  return {min, energy, k, cat, lvl, why, changed: min !== it.min || why.length > 0};
+}
+function aiLvlText(l){ return l < 0.8 ? 'nhẹ' : l < 0.95 ? 'hơi nhẹ' : l <= 1.05 ? 'chuẩn' : l <= 1.2 ? 'nặng hơn' : 'nặng'; }
+
+/* cập nhật sau mỗi buổi tập */
+function aiRecord(r){
+  const a = AIS(), cat = aiCat(r.focus); if(!cat) return;
+  const c = r.plan ? r.done / r.plan : 1, before = a.lvl[cat] || 1; let d = 0, why = '';
+  if(r.why === 'heavy'){ d = c < 0.5 ? -0.15 : -0.1; why = 'bạn dừng vì quá nặng'; }
+  else if(r.why === 'pain'){ d = -0.1; why = 'bạn bị đau, mỏi'; }
+  else if(r.rpe >= 9){ d = -0.08; why = 'bạn thấy quá sức'; }
+  else if(r.rpe >= 7 && r.skips >= 2){ d = -0.05; why = 'khó và bỏ qua vài bài'; }
+  else if(r.why === 'time' || r.why === 'tired'){ d = 0; }
+  else if(c >= 0.9 && r.rpe && r.rpe <= 3){ d = 0.07; why = 'bạn thấy nhẹ'; }
+  else if(c >= 0.9 && r.rpe && r.rpe <= 6){ d = 0.03; why = 'tập hết và vừa sức, tăng từ từ'; }
+  else if(c >= 0.9 && !r.rpe){ d = 0.02; }
+  if(d > 0){ const easy = a.hist.filter(h => h.cat === cat).slice(-2).every(h => h.done / (h.plan || h.done) >= 0.9 && h.rpe && h.rpe <= 3); if(easy && r.rpe <= 3) d += 0.03; }
+  a.lvl[cat] = Math.round(clamp(before + d, 0.6, 1.4) * 100) / 100;
+  a.fo = a.fo || {}; a.fo[r.focus] = Math.round(clamp((a.fo[r.focus] || 0) + d * 0.5, -0.15, 0.15) * 100) / 100;
+  a.skip = a.skip || {};
+  (r.skipIds || []).forEach(id => { a.skip[id] = (a.skip[id] || 0) + 1; if(a.skip[id] === 2 && EX[id]) aiNote('Bài “' + EX[id].n + '” bạn bỏ qua 2 lần: ' + (EX[id].easy && EX[exPick(EX[id].easy)] ? 'từ giờ đổi sang “' + EX[exPick(EX[id].easy)].n + '” dễ hơn.' : 'từ giờ làm ngắn hơn.')); });
+  if(c >= 0.9 && r.rpe && r.rpe <= 5) (r.ids || []).forEach(id => { if(a.skip[id] && !(r.skipIds || []).includes(id)) a.skip[id] = Math.max(0, a.skip[id] - 1); });
+  a.hist.push({d:todayStr(), t:Date.now(), cat, focus:r.focus, plan:r.plan, done:r.done, rpe:r.rpe || null, why:r.why || null, skips:r.skips || 0, late:isLate(new Date().getHours())});
+  a.hist = a.hist.slice(-150);
+  if(Math.abs(a.lvl[cat] - before) >= 0.04) aiNote(AI_CATS[cat] + ': ' + (a.lvl[cat] > before ? 'tăng' : 'giảm') + ' độ nặng còn ' + Math.round(a.lvl[cat] * 100) + '% vì ' + why + '.');
+  if(r.why === 'time' || r.why === 'tired'){ const late = isLate(); const cap = aiTimeCap(late); if(cap) aiNote('Ngày ' + (late ? 'về muộn' : 'thường') + ' bạn có khoảng ' + cap + ' phút: các buổi sau sẽ ngắn lại cho vừa.'); }
+  persist();
+}
+
+/* ----- buổi chạy: chấm điểm, nhận xét, so sánh với chính bạn ----- */
+function runTargetPace(pk){ const pc = curPaces(); if(!pc || !pc[pk]) return null; const v = pc[pk]; return Array.isArray(v) ? v : [v * 0.97, v * 1.03]; }
+function runEff(l){ return l.hr && l.sec && l.km ? (l.km * 1000 / (l.sec / 60)) / l.hr : null; }
+function runReview(l){
+  const pace = l.sec && l.km ? l.sec / l.km : null, r = l.planKey ? findRun(l.planKey) : null, pk = l.pk || (r && r.pk) || 'easy';
+  const planKm = l.planKm || (r && r.km) || null, tp = runTargetPace(pk), z = (EFF[pk] || EFF.easy).z, zb = zoneBpm(z);
+  const pts = [], good = [], fix = []; let score = 70;
+  if(planKm){ const c = l.km / planKm; if(c >= 0.95 && c <= 1.15){ good.push('Đủ quãng: ' + num(r1(l.km)) + '/' + num(planKm) + ' km.'); score += 10; } else if(c > 1.15){ fix.push('Chạy dài hơn kế hoạch ' + Math.round((c - 1) * 100) + '%. Khỏe là tốt, nhưng tăng quá nhanh dễ đau ống chân, gối; lịch tuần này đã tự rút bớt.'); } else { fix.push('Được ' + Math.round(c * 100) + '% quãng kế hoạch. Không sao: tuần sau lịch tăng từ mức bạn chạy được.'); score -= 5; } }
+  if(pace && tp){
+    const slow = pk === 'easy' || pk === 'long';
+    if(pace < tp[0] - 8){ if(slow){ fix.push('Nhanh hơn pace chạy dễ (' + fmtPace(pace) + ' so với ' + fmtPace(tp[0]) + '–' + fmtPace(tp[1]) + '). Buổi dễ mà chạy nhanh thì mệt tích lại, khó tiến bộ; chậm lại tới mức nói trọn câu.'); score -= 8; } else { good.push('Pace ' + fmtPace(pace) + ', nhanh hơn mục tiêu: sức đang lên.'); score += 10; } }
+    else if(pace > tp[1] + 15){ if(slow){ good.push('Pace ' + fmtPace(pace) + ', chậm và nhẹ nhàng: đúng tinh thần chạy dễ.'); score += 5; } else { fix.push('Chậm hơn pace mục tiêu (' + fmtPace(pace) + ' so với ' + fmtPace(tp[0]) + '). Trời nóng, mệt hay ngủ ít đều làm chậm; nếu lặp lại nhiều buổi, HLV sẽ hạ mục tiêu.'); } }
+    else { good.push('Pace ' + fmtPace(pace) + ' nằm đúng vùng mục tiêu.'); score += 10; }
+  }
+  if(l.hr && zb){
+    if(l.hr > zb[1] + 5 && (pk === 'easy' || pk === 'long')){ fix.push('Nhịp tim TB ' + l.hr + ', cao hơn vùng ' + z + ' (' + zb[0] + '–' + zb[1] + '). Lần sau đặt giới hạn nhịp tim trên đồng hồ là ' + zb[1] + ', vượt thì đi bộ 30 giây.'); score -= 8; }
+    else if(l.hr <= zb[1] + 5){ good.push('Nhịp tim TB ' + l.hr + ': kiểm soát tốt.'); score += 5; }
+  }
+  if(l.rpe){ if(l.rpe >= 9 && pk !== 'inter'){ fix.push('Bạn thấy rất khó. HLV sẽ giữ nguyên quãng tuần sau và đổi buổi chất lượng thành chạy dễ nếu lặp lại.'); score -= 5; } else if(l.rpe <= 5 && (pk === 'easy' || pk === 'long')) good.push('Cảm giác nhẹ nhàng: đúng ý đồ buổi này.'); }
+  /* so với chính bạn */
+  const prev = S.logs.filter(x => x.kind === 'run' && x.id !== l.id && x.sec && x.km && x.d < l.d && x.d >= addDays(l.d, -60) && Math.abs(x.km - l.km) <= Math.max(2, l.km * 0.3));
+  if(pace && prev.length >= 2){ const pp = median(prev.map(x => x.sec / x.km)), dd = pp - pace; if(Math.abs(dd) >= 5) pts.push((dd > 0 ? 'Nhanh hơn ' : 'Chậm hơn ') + Math.round(Math.abs(dd)) + ' giây/km so với các buổi tương tự 2 tháng qua (' + fmtPace(pp) + ').'); }
+  const ef = runEff(l), pe = prev.map(runEff).filter(Boolean);
+  if(ef && pe.length >= 2){ const m = median(pe), ch = (ef / m - 1) * 100; if(Math.abs(ch) >= 3) pts.push('Hiệu suất tim (tốc độ trên mỗi nhịp tim) ' + (ch > 0 ? 'tốt hơn ' : 'kém hơn ') + Math.round(Math.abs(ch)) + '% so với thường lệ' + (ch > 0 ? ': dấu hiệu sức bền tăng.' : ': có thể do nóng, mệt hoặc thiếu ngủ.')); }
+  const longest = Math.max(0, ...S.logs.filter(x => x.kind === 'run' && x.id !== l.id).map(x => +x.km || 0));
+  if(l.km > longest && longest > 0) pts.push('Kỷ lục mới: buổi dài nhất từ trước tới giờ (' + num(r1(l.km)) + ' km)!');
+  if(pace && l.km >= 3){ const f5 = l.sec * Math.pow(5 / l.km, 1.06), best = S.logs.filter(x => x.kind === 'run' && x.id !== l.id && x.sec && x.km >= 3).map(x => x.sec * Math.pow(5 / x.km, 1.06)); if(best.length && f5 < Math.min(...best) - 5) pts.push('Sức chạy tốt nhất từ trước tới giờ: tương đương 5 km trong ' + fmtDur(f5) + '.'); }
+  score = clamp(Math.round(score), 30, 100);
+  const verdict = score >= 85 ? 'Rất tốt' : score >= 72 ? 'Tốt' : score >= 60 ? 'Ổn' : 'Cần chỉnh';
+  return {pace, score, verdict, good, fix, pts, pk, tp, zb, z};
+}
+function runReviewHtml(l){
+  const R = runReview(l);
+  return '<div class="stat3"><div><b>' + num(r1(l.km)) + ' km</b><span>quãng đường</span></div><div><b>' + (l.sec ? fmtDur(l.sec) : '–') + '</b><span>thời gian</span></div><div><b>' + (R.pace ? fmtPace(R.pace) : '–') + '</b><span>pace /km' + (R.pace ? ' · ' + num(r1(3600 / R.pace)) + ' km/h' : '') + '</span></div></div>' +
+    '<div class="stat3" style="margin-top:8px"><div><b>' + (l.hr || '–') + '</b><span>nhịp tim TB' + (R.zb ? ' (vùng ' + R.z + ': ' + R.zb[0] + '–' + R.zb[1] + ')' : '') + '</span></div><div><b>' + (R.tp ? fmtPace(R.tp[0]) + '–' + fmtPace(R.tp[1]) : '–') + '</b><span>pace mục tiêu</span></div><div><b>' + R.score + '</b><span>' + R.verdict + '</span></div></div>' +
+    (R.good.length ? '<div class="sec-h" style="margin-top:14px"><h2>Làm tốt</h2></div><ul class="tips">' + R.good.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    (R.fix.length ? '<div class="sec-h" style="margin-top:12px"><h2>Nên chỉnh</h2></div><ul class="tips">' + R.fix.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    (R.pts.length ? '<div class="sec-h" style="margin-top:12px"><h2>So với chính bạn</h2></div><ul class="tips">' + R.pts.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    (!l.sec ? '<p class="small muted" style="margin-top:10px">Thêm thời gian chạy (và nhịp tim nếu có) để HLV nhận xét pace và nhịp tim.</p>' : '');
+}
+function openRunReview(id){ const l = S.logs.find(x => x.id === id); if(!l) return; openSheet((l.title || 'Buổi chạy') + ' · ' + viDate(l.d), runReviewHtml(l) + '<div class="btn-row sec"><button class="linkish small" data-act="del-log" data-id="' + esc(l.id) + '">Xóa buổi này</button></div>'); }
+/* mệt tích lũy khi chạy: 2 buổi gần nhất rất khó hoặc thiếu nhiều → tuần này buổi chất lượng thành chạy dễ */
+function aiRunFatigue(){
+  const L = S.logs.filter(l => l.kind === 'run' && l.d >= addDays(todayStr(), -10)).slice(-2);
+  if(L.length < 2) return null;
+  const hard = L.filter(l => (l.rpe || 0) >= 9 || (l.planKm && l.km < l.planKm * 0.75)).length;
+  return hard >= 2 ? 'Hai buổi chạy gần nhất bạn thấy rất khó hoặc không chạy hết. HLV đổi buổi chất lượng tuần này thành chạy dễ để bạn hồi lại.' : null;
+}
+/* tổng quan tiến bộ chạy 8 tuần */
+function runProgressHtml(){
+  const weeks = []; for(let i = 7; i >= 0; i--){ const m = addDays(mondayOf(todayStr()), -7 * i); weeks.push([m, addDays(m, 6)]); }
+  const km = weeks.map(r => r1(kmIn(r))), lab = weeks.map(r => viDate(r[0]).split('/').slice(0, 2).join('/'));
+  const ep = weeks.map(r => { const L = S.logs.filter(l => l.kind === 'run' && l.d >= r[0] && l.d <= r[1] && l.sec && l.km && (!l.pk || l.pk === 'easy' || l.pk === 'long')); return L.length ? Math.round(sum(L, l => l.sec) / sum(L, l => l.km)) : 0; });
+  if(!km.some(Boolean)) return '';
+  const lastE = ep.filter(Boolean), trend = lastE.length >= 3 ? lastE[0] - lastE[lastE.length - 1] : 0;
+  return '<section class="sec"><div class="sec-h"><h2>Km mỗi tuần</h2><span class="aside">8 tuần</span></div>' + barsHtml(km, lab, v => v ? num(v) : '', 7) + '</section>' +
+    (lastE.length >= 2 ? '<section class="sec"><div class="sec-h"><h2>Pace chạy dễ trung bình</h2><span class="aside">' + (trend > 5 ? 'nhanh hơn ' + trend + ' giây/km so với 8 tuần trước' : trend < -5 ? 'chậm hơn ' + (-trend) + ' giây/km' : 'ổn định') + '</span></div>' + barsHtml(ep.map(v => v ? Math.max(5, Math.max(...lastE) + 25 - v) : 0), lab, (v, i) => ep[i] ? fmtPace(ep[i]) : '', 7) + '<p class="small muted">Cột cao hơn là chạy nhanh hơn ở cùng mức nhẹ nhàng.</p></section>' : '');
+}
+
+/* thẻ "HLV hiểu bạn thế nào" */
+function aiCardHtml(){
+  const a = AIS(), hist = a.hist.slice(-10), cap = aiTimeCap(true), cap2 = aiTimeCap(false);
+  const lv = Object.keys(AI_CATS).map(k => '<div><b>' + Math.round(aiLvl(k) * 100) + '%</b><span>' + AI_CATS[k] + ' · ' + aiLvlText(aiLvl(k)) + '</span></div>').join('');
+  const doneR = hist.length ? Math.round(sum(hist, h => Math.min(1, h.done / (h.plan || h.done))) / hist.length * 100) : null;
+  return '<section class="sec"><div class="sec-h"><h2>HLV đang chỉnh cho bạn</h2><span class="aside">Học từ ' + a.hist.length + ' buổi</span></div><div class="card">' +
+    '<div class="stat3">' + lv + '</div>' +
+    '<p class="small" style="margin-top:10px">' + (doneR != null ? 'Bạn tập hết trung bình <b>' + doneR + '%</b> thời lượng 10 buổi gần đây. ' : 'Tập vài buổi, cuối buổi chạm cảm giác nặng nhẹ, HLV sẽ tự chỉnh. ') +
+    'Ngày về muộn: buổi tập tự rút còn khoảng <b>' + (cap || 10) + ' phút</b>, nhẹ nhàng cho dễ ngủ.' + (cap2 ? ' Ngày thường bạn hay có khoảng <b>' + cap2 + ' phút</b>.' : '') + '</p>' +
+    (() => { const fo = a.fo || {}, F = Object.keys(fo).filter(k => FOCUS[k] && Math.abs(fo[k]) >= 0.04), H = Object.keys(a.skip || {}).filter(id => aiHard(id) && EX[id]);
+      return (F.length ? '<p class="small" style="margin-top:6px">Riêng từng nhóm: ' + F.map(k => esc(FOCUS[k].n) + ' ' + Math.round(aiLvlF(k) * 100) + '%').join(', ') + '.</p>' : '') +
+        (H.length ? '<p class="small" style="margin-top:6px">Bài đang thay bản dễ hơn: ' + H.map(id => esc(EX[id].n)).join(', ') + '. Tập hết và thấy vừa sức vài lần thì tự trả lại bài gốc.</p>' : ''); })() +
+    (a.log.length ? '<ul class="tips" style="margin-top:8px">' + a.log.slice(-3).reverse().map(x => '<li><b>' + viDate(x.d) + '</b>' + esc(x.txt) + '</li>').join('') + '</ul>' : '') +
+    '<div class="btn-row"><button class="linkish small" data-act="ai-how">HLV chỉnh thế nào?</button><button class="linkish small" data-act="ai-reset">Đặt lại về chuẩn</button></div></div></section>';
+}
+function plFeedbackHtml(full){
+  return '<div style="margin-top:14px"><p class="pl-cue" style="margin-bottom:8px">' + (full ? 'Buổi này với bạn thế nào?' : 'Vì sao dừng sớm? HLV sẽ chỉnh buổi sau.') + '</p><div class="chips" style="justify-content:center">' +
+    (full ? RPE_L.map(([v, n]) => '<button class="chip" data-act="ai-rpe" data-v="' + v + '">' + n + '</button>').join('') : Object.keys(WHY).map(k => '<button class="chip" data-act="ai-why" data-v="' + k + '">' + WHY[k] + '</button>').join('')) + '</div><p class="pl-cue small" id="aiMsg" style="margin-top:8px"></p></div>';
+}
+function aiFromPlayer(extra){
+  const m = PL.meta; if(!m || m.kind !== 'workout' || !aiCat(m.focus) || m.aiDone) return;
+  m.aiDone = true;
+  aiRecord(Object.assign({focus:m.focus, plan:m.planMin || Math.round(PL.list.reduce((s, x) => s + x.sec, 0) / 60), done:Math.max(1, Math.round(PL.elapsed / 60000)), skips:PL.skips || 0, skipIds:(PL.skipIds || []).filter((x, i, A) => A.indexOf(x) === i), ids:[...new Set(PL.list.filter(x => x.type === 'work' && x.id).map(x => x.id))]}, extra));
+  const cat = aiCat(m.focus), l = aiLvl(cat), el = $('#aiMsg');
+  if(el) el.textContent = 'Đã ghi nhận. Buổi ' + AI_CATS[cat].toLowerCase() + ' tới: độ nặng ' + Math.round(l * 100) + '% (' + aiLvlText(l) + ').';
+}
+Object.assign(ACT, {
+  'ai-rpe': b => { b.parentNode.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === b))); aiFromPlayer({rpe:+b.dataset.v}); },
+  'ai-why': b => { b.parentNode.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === b))); aiFromPlayer({why:b.dataset.v, rpe: b.dataset.v === 'heavy' ? 8 : null}); },
+  'ai-reset': () => { const a = AIS(); a.lvl = {str:1, burn:1, rec:1}; a.hist = []; a.log = []; persist(); renderAll(); toast('Đã đặt lại. HLV học lại từ đầu.'); },
+  'ai-how': () => openSheet('HLV AI chỉnh thế nào?', '<ul class="tips">' +
+    '<li><b>Mỗi buổi là một tín hiệu</b>Tập hết hay bỏ dở, bỏ qua mấy bài, cuối buổi bạn chạm Nhẹ / Vừa sức / Khó / Quá sức, hoặc vì sao dừng sớm.</li>' +
+    '<li><b>Quá nặng thì giảm, nhẹ thì tăng từ từ</b>Dừng vì quá nặng: giảm 10–15% độ nặng (thời gian mỗi bài ngắn lại, nghỉ dài hơn, đổi sang bài dễ hơn). Tập hết và thấy nhẹ: tăng 5–10%. Vừa sức: tăng 3% để vẫn tiến bộ.</li>' +
+    '<li><b>Hết thời gian thì không giảm độ nặng</b>Mà học xem bạn thường có bao nhiêu phút, riêng ngày thường và ngày về muộn (sau 21 giờ), để buổi sau vừa đủ thời gian.</li>' +
+    '<li><b>Ngày về muộn</b>Sau 21 giờ buổi tập tự thành bản ngắn, nhẹ, không bật nhảy, cho dễ ngủ. Vẫn được tính là đã tập.</li>' +
+    '<li><b>Chạy</b>Lịch chạy tự chỉnh theo km bạn chạy thật. Hai buổi gần nhất rất khó hoặc thiếu nhiều: buổi chất lượng tuần này thành chạy dễ. Mỗi buổi chạy có nhận xét pace, nhịp tim, so với chính bạn.</li>' +
+    '<li><b>Nhịp tim nghỉ cao</b>Nếu có số từ đồng hồ và nhịp nghỉ cao bất thường, buổi tập hôm đó tự nhẹ đi.</li>' +
+    '<li><b>Riêng tư</b>Mọi tính toán chạy ngay trên máy, không gửi đi đâu.</li></ul>'),
+  'slot-lite': b => { const it = findItem(b.dataset.key); if(!it) return; aiStartSlot(it, 'lite'); },
+  'run-review': b => openRunReview(b.dataset.id)
+});
+function aiStartSlot(it, force){
+  const P = aiPlan(it, force), w = buildWorkout(it.focus, P.min, P.energy, {variant:UI.variant, ai:P.k});
+  startSession({kind:'workout', title:w.title + (force === 'lite' || P.min < it.min ? ' (bản ngắn)' : ''), focus:it.focus, slot:it.key, planMin:P.min}, w.items);
+}
+
+/* ================= Cố vấn sức khỏe: giờ ngủ hợp với bạn + gợi ý mỗi ngày dựa trên xu hướng của chính bạn ================= */
+function nightMin(n, k){ const d = new Date(k === 'wake' ? n.end : (n.on || n.start)); let m = d.getHours() * 60 + d.getMinutes(); if(k !== 'wake' && m < 720) m += 1440; return m; }
+/* bạn cần ngủ bao lâu: lấy từ các đêm sáng dậy thấy Khỏe / Rất khỏe; chưa đủ dữ liệu thì dùng mục tiêu */
+function sleepNeed(){
+  const goal = Math.round((S.profile.sleepGoal || 7.5) * 60), L = S.sleep.filter(n => n.tst && n.d >= addDays(todayStr(), -60));
+  const good = L.filter(n => n.feel >= 4).map(n => n.tst), bad = L.filter(n => n.feel && n.feel <= 2).map(n => n.tst);
+  if(good.length >= 3){
+    let need = median(good);
+    if(bad.length >= 2 && median(bad) >= need) need = Math.max(need, median(bad) + 20);
+    return {min:clamp(Math.round(need / 5) * 5, 390, 540), src:'feel', n:good.length};
+  }
+  return {min:goal, src:'goal', n:good.length};
+}
+/* giờ dậy ngày mai: theo chương trình dậy sớm, nếu không thì giờ dậy quen thuộc của ngày thường / cuối tuần */
+function wakeFor(dayStr){
+  if(typeof wakePlan === 'function'){ const wp = wakePlan(); if(wp) return {min:wp.wake, src:'plan'}; }
+  const we = d => { const x = parse(d).getDay(); return x === 0 || x === 6; }, want = we(dayStr);
+  const L = S.sleep.filter(n => n.d >= addDays(todayStr(), -28) && we(n.d) === want).map(n => nightMin(n, 'wake'));
+  if(L.length >= 3) return {min:Math.round(median(L) / 5) * 5, src:'habit'};
+  return {min:tmin(S.profile.wakeT || '06:30'), src:'profile'};
+}
+function sleepLatency(){ const L = S.sleep.filter(n => n.lat != null && n.d >= addDays(todayStr(), -30)).map(n => n.lat); return L.length >= 3 ? clamp(Math.round(median(L)), 5, 45) : 15; }
+function sleepDebt7(){ const goal = sleepNeed().min, L = S.sleep.filter(n => n.end > Date.now() - 7 * DAY && n.tst); return L.length ? Math.max(0, Math.round(sum(L, n => goal - n.tst) / L.length * 7)) : 0; }
+/* giờ lên giường gợi ý cho tối nay */
+function bedtimeSuggest(){
+  const tm = addDays(todayStr(), new Date().getHours() >= 12 ? 1 : 0), W = wakeFor(tm), need = sleepNeed(), lat = sleepLatency(), debt = sleepDebt7();
+  let sleepM = need.min; const why = [];
+  if(debt >= 180){ sleepM += 30; why.push('tuần qua thiếu khoảng ' + fmtHm(debt) + ': lên giường sớm hơn 30 phút vài tối để trả nợ ngủ, giữ nguyên giờ dậy'); }
+  /* làm tròn theo chu kỳ 90 phút nếu chênh không quá 20 phút, dậy cuối chu kỳ đỡ lờ đờ */
+  const cyc = Math.round(sleepM / 90), cm = cyc * 90; if(Math.abs(cm - sleepM) <= 20 && cm >= 360){ sleepM = cm; why.push('tròn ' + cyc + ' chu kỳ ngủ, dậy cuối chu kỳ đỡ lờ đờ'); }
+  let bed = W.min - sleepM - lat; while(bed < 0) bed += 1440;
+  const recent = S.sleep.filter(n => n.end > Date.now() - 7 * DAY).map(n => nightMin(n, 'bed')), cur = recent.length ? Math.round(median(recent)) : null;
+  const b2 = bed < 720 ? bed + 1440 : bed; let tonight = bed;
+  if(cur && cur - b2 > 45){ tonight = (cur - 15) % 1440; why.push('bạn đang quen ngủ khoảng ' + minToHHMM(cur % 1440) + ', muộn hơn giờ nên ngủ: tối nay lên giường ' + minToHHMM(tonight) + ', mỗi tối sớm thêm 15 phút tới ' + minToHHMM(bed) + '. Đừng ép sớm cả tiếng một lần, nằm lâu không ngủ được còn mệt hơn'); }
+  why.unshift(need.src === 'feel' ? 'những đêm ngủ khoảng ' + fmtHm(need.min) + ' bạn dậy thấy khỏe' : 'mục tiêu ' + fmtHm(need.min) + '; sáng nào cũng chạm cảm giác khi dậy để app tìm ra số giờ hợp với bạn');
+  return {bed:tonight, target:bed, wind:(tonight - 45 + 1440) % 1440, wake:W.min, sleepM, need, lat, why, wsrc:W.src, step:tonight !== bed};
+}
+function bedtimeHtml(compact){
+  const B = bedtimeSuggest();
+  if(compact) return '<p class="small" style="margin-top:4px">Gợi ý tối nay: thư giãn từ <b>' + minToHHMM(B.wind) + '</b>, lên giường <b>' + minToHHMM(B.bed) + '</b> để dậy ' + minToHHMM(B.wake) + (B.step ? '; mục tiêu dần về ' + minToHHMM(B.target) : ' (ngủ ~' + fmtHm(B.sleepM) + ')') + '.</p>';
+  return '<section class="sec"><div class="sec-h"><h2>Giờ ngủ hợp với bạn</h2><span class="aside">Tính từ dữ liệu của bạn</span></div><div class="card">' +
+    '<div class="wk-line"><div><b>' + minToHHMM(B.wind) + '</b><span>bắt đầu thư giãn</span></div><div><b>' + minToHHMM(B.bed) + '</b><span>lên giường' + (B.step ? ' tối nay' : '') + '</span></div><div><b>' + minToHHMM(B.wake) + '</b><span>' + (B.wsrc === 'plan' ? 'dậy (theo chương trình)' : B.wsrc === 'habit' ? 'dậy (giờ quen của bạn)' : 'dậy') + '</span></div></div>' + (B.step ? '<p class="small" style="margin-top:8px">Mục tiêu: lên giường <b>' + minToHHMM(B.target) + '</b> để ngủ đủ ' + fmtHm(B.sleepM) + '.</p>' : '') +
+    '<ul class="tips" style="margin-top:10px">' + B.why.map(x => '<li>' + esc(x.charAt(0).toUpperCase() + x.slice(1)) + '.</li>').join('') + '<li>Vào giấc của bạn mất khoảng ' + B.lat + ' phút, đã cộng vào.</li></ul>' +
+    '<div class="btn-row"><button class="btn small ghost" data-act="alarm-guide">Đặt Lịch ngủ trên iPhone theo giờ này</button></div></div></section>';
+}
+
+/* điều gì giúp bạn ngủ ngon: so sánh các đêm có và không có một thói quen */
+function sleepFactors(){
+  const N = S.sleep.filter(n => n.d >= addDays(todayStr(), -60) && n.score);
+  if(N.length < 6) return [];
+  const day = n => addDays(n.d, -1), dl = d => S.logs.filter(l => l.d === d);
+  const F = [
+    ['Ngày có vận động', n => dl(day(n)).some(l => ['run','workout','walk','other'].includes(l.kind) && (l.min || 0) >= 15)],
+    ['Tập sau 21 giờ', n => dl(day(n)).some(l => ['run','workout'].includes(l.kind) && new Date(l.t).getHours() >= 21)],
+    ['Đi đủ số bước', n => ((S.health[day(n)] || {}).steps || 0) >= (S.profile.stepGoal || 8000)],
+    ['Lên giường trước 23 giờ', n => nightMin(n, 'bed') <= 23 * 60],
+    ['Có thiền hoặc thở trong ngày', n => S.mindLog.some(m => m.d === day(n) && (m.min || 0) >= 3)],
+    ['Uống đủ nước', n => (S.water[day(n)] || 0) >= foodTargets(day(n)).waterMl * 0.9]
+  ];
+  const out = [];
+  F.forEach(([name, f]) => {
+    let A = [], B = []; try{ N.forEach(n => (f(n) ? A : B).push(n)); }catch(e){ return; }
+    if(A.length < 3 || B.length < 3) return;
+    const sa = sum(A, n => n.score) / A.length, sb = sum(B, n => n.score) / B.length, d = Math.round(sa - sb);
+    if(Math.abs(d) >= 4) out.push({name, d, a:A.length, b:B.length});
+  });
+  return out.sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+}
+function sleepFactorsHtml(){
+  const F = sleepFactors();
+  if(!F.length) return '<section class="sec"><div class="sec-h"><h2>Điều giúp bạn ngủ ngon</h2></div><p class="small muted">Cần khoảng 2 tuần dữ liệu ngủ. Sau đó app so sánh: ngày có tập, đủ bước, ngủ trước 23 giờ, có thiền, đủ nước… cái nào thật sự làm bạn ngủ ngon hơn.</p></section>';
+  return '<section class="sec"><div class="sec-h"><h2>Điều giúp bạn ngủ ngon</h2><span class="aside">So sánh các đêm của chính bạn</span></div><ul class="tips">' +
+    F.slice(0, 4).map(x => '<li><b>' + esc(x.name) + '</b>Điểm ngủ ' + (x.d > 0 ? 'cao hơn ' : 'thấp hơn ') + Math.abs(x.d) + ' điểm (' + x.a + ' đêm so với ' + x.b + ' đêm). ' + (x.d > 0 ? 'Nên giữ.' : 'Nên tránh.') + '</li>').join('') + '</ul><p class="small muted">Đây là tương quan trên dữ liệu của bạn, chưa chắc là nguyên nhân; càng nhiều đêm càng đáng tin.</p></section>';
+}
+
+/* gợi ý hôm nay: tối đa 3 việc nhỏ, ưu tiên cái có ích nhất */
+function healthTips(){
+  const t = todayStr(), h = new Date().getHours(), tips = [], p = S.profile;
+  const rd = typeof readiness === 'function' ? readiness() : null;
+  if(rd && rd.lvl === 'low') tips.push({w:10, t:'Cơ thể chưa hồi phục', d:'Nhịp tim nghỉ cao hơn thường lệ. Hôm nay tập nhẹ hoặc đi bộ, ngủ sớm.', act:'go', v:'giac-ngu', s:'xu-huong', b:'Xem chi tiết'});
+  const debt = sleepDebt7(), B = bedtimeSuggest();
+  if(debt >= 180 && h >= 11 && h < 15) tips.push({w:8, t:'Ngủ trưa 20 phút', d:'Tuần qua thiếu khoảng ' + fmtHm(debt) + '. Chợp mắt 15–20 phút trước 15 giờ giúp tỉnh táo mà không làm khó ngủ tối nay.', act:'go', v:'giac-ngu', s:'ru-ngu', b:'Âm thanh nghỉ'});
+  if(h >= 18) tips.push({w: debt >= 120 ? 9 : 5, t:'Lên giường lúc ' + minToHHMM(B.bed), d:'Thư giãn từ ' + minToHHMM(B.wind) + ', tắt màn hình sáng. Để dậy ' + minToHHMM(B.wake) + ' mà đủ ' + fmtHm(B.sleepM) + '.', act:'go', v:'giac-ngu', s:'day-som', b:'Vì sao giờ này'});
+  const hs = (S.health[t] || {}).steps || 0;
+  if(h >= 15 && hs && hs < (p.stepGoal || 8000) * 0.6) tips.push({w:6, t:'Đi bộ 15 phút', d:'Hôm nay mới ' + int(hs) + ' bước. Đi bộ sau bữa tối giúp hạ đường huyết, dễ ngủ hơn.', act:'log-run', kind:'walk', b:'Ghi đi bộ'});
+  const wtr = S.water[t] || 0, wt = foodTargets(t).waterMl;
+  if(h >= 10 && wtr < wt * clamp((h - 8) / 12, 0, 1) * 0.6) tips.push({w:5, t:'Uống 1 ' + (bottle() >= 700 ? 'nửa bình' : 'bình') + ' nước', d:'Mới ' + num(r1(wtr / 1000)) + ' trên ' + num(r1(wt / 1000)) + ' lít. Uống đều, ngưng bớt 2 tiếng trước ngủ.', act:'go', v:'van-dong', s:'an-uong', b:'Tích nước'});
+  const ms = mindStats();
+  if(!ms.todayDone && h >= 12) tips.push({w: h >= 20 ? 6 : 3, t: h >= 20 ? 'Thở 4-7-8 trước khi ngủ' : '3 phút thở giữa ngày', d: h >= 20 ? '4 nhịp thở ra dài giúp cơ thể chuyển sang chế độ nghỉ.' : 'Giảm căng thẳng, giữ chuỗi ' + ms.streak + ' ngày.', act:'breath-start', k: h >= 20 ? 'b478' : 'box', m: h >= 20 ? 4 : 3, b:'Bắt đầu'});
+  if(h >= 13 && h < 20 && snacksToday() === 0) tips.push({w:4, t:'Đứng dậy 2 phút', d:'Ngồi lâu cả ngày: 2 phút vận động mỗi giờ giảm mỏi lưng, tỉnh táo hơn.', act:'quick2', b:'Tập 2 phút'});
+  const lateW = AIS().hist.filter(x => x.late).length, allW = AIS().hist.length;
+  if(allW >= 6 && lateW / allW > 0.5 && h < 20) tips.push({w:4, t:'Tập sớm hơn nếu được', d:'Hơn nửa buổi tập của bạn diễn ra sau 21 giờ. Tập trước 20 giờ dễ ngủ sâu hơn; không được thì app đã tự cho bản nhẹ.', act:'go', v:'van-dong', s:'lich', b:'Xem lịch'});
+  return tips.sort((a, b) => b.w - a.w).slice(0, 3);
+}
+function healthTipsHtml(){
+  const T = healthTips(); if(!T.length) return '';
+  const btn = x => '<button class="btn small ghost" data-act="' + x.act + '"' + (x.v ? ' data-v="' + x.v + '"' : '') + (x.s ? ' data-s="' + x.s + '"' : '') + (x.kind ? ' data-kind="' + x.kind + '"' : '') + (x.k ? ' data-k="' + x.k + '"' : '') + (x.m ? ' data-m="' + x.m + '"' : '') + '>' + x.b + '</button>';
+  return '<section class="sec"><div class="sec-h"><h2>Gợi ý cho sức khỏe hôm nay</h2><span class="aside">Theo xu hướng của bạn</span></div><div class="list">' +
+    T.map(x => '<div class="item"><div><h3>' + esc(x.t) + '</h3><p>' + esc(x.d) + '</p></div>' + btn(x) + '</div>').join('') + '</div></section>';
+}
 
 function kmChart(){
   const weeks = [], m = mondayOf(todayStr());
